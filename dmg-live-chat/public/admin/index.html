@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+    <head>
+        <meta charset="utf-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content" />
+        <title>DMG Chat</title>
+        <meta name="theme-color" content="#0f172a" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+        <meta name="apple-mobile-web-app-title" content="DMG Chat" />
+        <link rel="manifest" href="manifest.webmanifest" />
+        <link rel="icon" href="icon-192.png" />
+        <link rel="apple-touch-icon" href="apple-touch-icon.png" />
+        <link rel="stylesheet" href="admin.css" />
+    </head>
+    <body>
+        <!-- Login -->
+        <section id="login" class="screen" hidden>
+            <form id="login-form" class="login-card">
+                <img src="icon-192.png" alt="" width="64" height="64" />
+                <h1>DMG Chat</h1>
+                <p>Sign in to reply to website visitors.</p>
+                <input id="password" type="password" placeholder="Password" autocomplete="current-password" required />
+                <button type="submit">Sign in</button>
+                <div id="login-error" class="error"></div>
+            </form>
+        </section>
+
+        <!-- App -->
+        <section id="app" class="screen" hidden>
+            <aside id="sidebar">
+                <header class="bar">
+                    <h1>Chats</h1>
+                    <span id="conn" class="conn" title="Connection"></span>
+                    <button id="settings-btn" class="icon-btn" aria-label="Settings">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="3" />
+                            <path
+                                d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06A1.65 1.65 0 004.68 15a1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06A1.65 1.65 0 009 4.68a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06A1.65 1.65 0 0019.4 9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"
+                            />
+                        </svg>
+                    </button>
+                </header>
+                <div id="notify-banner" class="banner" hidden></div>
+                <nav class="tabs">
+                    <button data-status="open" class="active">Open</button>
+                    <button data-status="closed">Closed</button>
+                </nav>
+                <ul id="list"></ul>
+                <div id="empty" class="empty" hidden>No conversations yet.<br />When someone messages you on the website, it shows up here.</div>
+            </aside>
+
+            <main id="thread">
+                <div id="no-thread" class="empty">Select a conversation</div>
+                <div id="thread-view" hidden>
+                    <header class="bar thread-bar">
+                        <button id="back" class="icon-btn" aria-label="Back">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M15 18l-6-6 6-6" />
+                            </svg>
+                        </button>
+                        <div class="who">
+                            <div id="t-name" class="name"></div>
+                            <div id="t-meta" class="meta"></div>
+                        </div>
+                        <button id="t-status" class="pill-btn"></button>
+                        <button id="t-delete" class="icon-btn danger" aria-label="Delete conversation">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" />
+                            </svg>
+                        </button>
+                    </header>
+                    <div id="t-info" class="info"></div>
+                    <div id="messages"></div>
+                    <div id="v-typing" class="typing" hidden>typing…</div>
+                    <div id="quick" class="quick"></div>
+                    <form id="composer">
+                        <textarea id="reply" rows="1" placeholder="Reply…" aria-label="Reply"></textarea>
+                        <button type="submit" aria-label="Send">
+                            <svg viewBox="0 0 24 24" fill="currentColor">
+                                <path
+                                    d="M3.4 20.4l17.45-7.48a1 1 0 000-1.84L3.4 3.6a.99.99 0 00-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z"
+                                />
+                            </svg>
+                        </button>
+                    </form>
+                </div>
+            </main>
+        </section>
+
+        <!-- Settings -->
+        <dialog id="settings">
+            <h2>Settings</h2>
+            <h3>Phone notifications</h3>
+            <p id="push-state" class="muted"></p>
+            <div class="row">
+                <button id="push-enable">Enable on this device</button>
+                <button id="push-test" class="secondary">Send test</button>
+            </div>
+            <h3>Quick replies</h3>
+            <p class="muted">One per line. Tap one above the reply box to insert it.</p>
+            <textarea id="quick-edit" rows="5"></textarea>
+            <h3>Website embed code</h3>
+            <p class="muted">Paste this before <code>&lt;/body&gt;</code> on your site (or in a WordPress header/footer plugin).</p>
+            <pre id="embed"></pre>
+            <div class="row">
+                <button id="logout" class="secondary">Sign out</button>
+                <button id="settings-close">Done</button>
+            </div>
+        </dialog>
+
+        <script src="/socket.io/socket.io.min.js"></script>
+        <script src="app.js"></script>
+    </body>
+</html>
