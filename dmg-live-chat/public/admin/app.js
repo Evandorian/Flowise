@@ -16,6 +16,7 @@
         status: 'open',
         conversations: new Map(),
         currentId: null,
+        typing: new Set(),
         lastStamp: 0
     }
 
@@ -166,7 +167,10 @@
                 li.querySelector('.li-name').append(pill)
             }
             li.querySelector('.li-time').textContent = relTime(c.last_message_at)
-            li.querySelector('.li-last').textContent = (c.last_sender === 'admin' ? 'You: ' : '') + (c.last_message || '')
+            li.querySelector('.li-last').textContent = state.typing.has(c.id)
+                ? 'typing…'
+                : (c.last_sender === 'admin' ? 'You: ' : '') + (c.last_message || '')
+            if (state.typing.has(c.id)) li.querySelector('.li-last').classList.add('is-typing')
             li.addEventListener('click', () => openConversation(c.id))
             list.append(li)
         }
@@ -191,6 +195,33 @@
     )
 
     // ---------------------------------------------------------------- thread
+
+    // "..." bubble while the visitor is typing. Hides itself if the stop signal is lost.
+    const typingTimers = new Map()
+    function setVisitorTyping(conversationId, typing) {
+        clearTimeout(typingTimers.get(conversationId))
+        if (typing) {
+            state.typing.add(conversationId)
+            typingTimers.set(conversationId, setTimeout(() => setVisitorTyping(conversationId, false), 8000))
+        } else state.typing.delete(conversationId)
+        if (conversationId === state.currentId) renderTypingBubble()
+        renderList()
+    }
+
+    function renderTypingBubble() {
+        const box = $('messages')
+        let bubble = box.querySelector('.typing-bubble')
+        const show = state.typing.has(state.currentId)
+        if (!show) return bubble && bubble.remove()
+        if (!bubble) {
+            bubble = document.createElement('div')
+            bubble.className = 'msg visitor typing-bubble'
+            bubble.setAttribute('aria-label', 'Visitor is typing')
+            bubble.innerHTML = '<span></span><span></span><span></span>'
+        }
+        box.append(bubble) // keep it last
+        box.scrollTop = box.scrollHeight
+    }
 
     function addMessage(m) {
         const box = $('messages')
@@ -228,6 +259,7 @@
             el.append(tag)
         }
         box.append(el)
+        renderTypingBubble()
         box.scrollTop = box.scrollHeight
     }
 
@@ -274,7 +306,6 @@
             $('no-thread').hidden = true
             $('thread-view').hidden = false
             $('app').classList.add('in-thread')
-            $('v-typing').hidden = true
             renderThreadHeader(res.conversation)
             $('messages').innerHTML = ''
             state.lastStamp = 0
@@ -388,10 +419,13 @@
 
     let typingTimer = null
     let typingOn = false
+    let typingSentAt = 0
     function sendTyping() {
         if (!state.currentId) return
-        if (!typingOn) {
+        // Re-send every few seconds so the visitor keeps seeing the bubble during long replies.
+        if (!typingOn || Date.now() - typingSentAt > 3000) {
             typingOn = true
+            typingSentAt = Date.now()
             state.socket.emit('typing', { conversationId: state.currentId, typing: true })
         }
         clearTimeout(typingTimer)
@@ -568,16 +602,14 @@
             if (m.conversation_id === state.currentId) {
                 addMessage(m)
                 if (m.sender === 'visitor') {
-                    $('v-typing').hidden = true
+                    setVisitorTyping(m.conversation_id, false)
                     if (!document.hidden) socket.emit('read', m.conversation_id)
                 }
             }
             if (m.sender === 'visitor' && !document.hidden) ping()
         })
 
-        socket.on('visitor_typing', ({ conversationId, typing }) => {
-            if (conversationId === state.currentId) $('v-typing').hidden = !typing
-        })
+        socket.on('visitor_typing', ({ conversationId, typing }) => setVisitorTyping(conversationId, typing))
     }
 
     // Mark the open conversation read when you come back to the app.

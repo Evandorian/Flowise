@@ -13,8 +13,8 @@ self.addEventListener('push', (event) => {
     const tasks = [
         self.registration.showNotification(data.title || 'New chat message', {
             body: data.body || '',
-            icon: 'icon-192.png',
-            badge: 'icon-192.png',
+            icon: '/admin/dmg-chat-192.png',
+            badge: '/admin/dmg-chat-192.png',
             tag: data.conversationId || 'dmg-chat',
             renotify: true,
             data: { url: data.url || './', conversationId: data.conversationId }

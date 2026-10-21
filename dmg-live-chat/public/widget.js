@@ -187,7 +187,10 @@
         '.act{display:flex;align-items:center;gap:10px;min-height:46px;padding:0 16px;border-radius:14px;font-weight:700;font-size:14.5px;text-decoration:none;border:1px solid var(--field);background:#fff;color:var(--ink);text-align:left}' +
         '.act svg{width:18px;height:18px;flex:none}' +
         '.act.primary{background:var(--c);border-color:var(--c)}' +
-        '.typing{align-self:flex-start;display:none;background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px 14px}' +
+        '.typing{align-self:flex-start;display:none;align-items:flex-end;gap:8px}' +
+        '.typing.on{display:flex;animation:pop .2s cubic-bezier(.22,1,.36,1)}' +
+        '.typing .av{width:28px;height:28px}' +
+        '.typing .dots{background:#fff;border:1px solid var(--line);border-radius:18px 18px 18px 6px;padding:13px 15px;display:flex;gap:4px}' +
         '.typing span{display:inline-block;width:6px;height:6px;margin:0 2px;border-radius:50%;background:#9aa3b2;animation:b 1.2s infinite}' +
         '.typing span:nth-child(2){animation-delay:.2s}.typing span:nth-child(3){animation-delay:.4s}' +
         '@keyframes b{0%,60%,100%{transform:none;opacity:.5}30%{transform:translateY(-4px);opacity:1}}' +
@@ -239,7 +242,7 @@
         '    <div class="who"><div class="n disp"></div><div class="r"></div></div>' +
         '    <button type="button" class="iconbtn min" aria-label="Minimize chat">' + ICON.down + '</button></header>' +
         '  <div class="err" role="alert"></div>' +
-        '  <div class="msgs" aria-live="polite"><div class="typing" aria-label="typing"><span></span><span></span><span></span></div></div>' +
+        '  <div class="msgs" aria-live="polite"><div class="typing" role="status"><div class="av"><img alt=""></div><div class="dots" aria-label="' + firstName + ' is typing"><span></span><span></span><span></span></div></div></div>' +
         '  <form class="compose">' +
         '    <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">' +
         '    <input type="file" class="file sr" accept="image/*,application/pdf" tabindex="-1" aria-hidden="true">' +
@@ -579,6 +582,20 @@
         })()
     }
 
+    // "..." bubble with Evan's photo while he types. Hides itself if the stop signal is lost.
+    var adminTypingTimer = null
+    function setAdminTyping(on) {
+        clearTimeout(adminTypingTimer)
+        typingEl.classList.toggle('on', Boolean(on))
+        if (on) {
+            msgs.appendChild(typingEl) // keep it below the newest message
+            scrollDown()
+            adminTypingTimer = setTimeout(function () {
+                setAdminTyping(false)
+            }, 8000)
+        }
+    }
+
     function connect() {
         if (socket) return
         socket = { connected: false, emit: function () {} } // placeholder while socket.io loads
@@ -620,7 +637,7 @@
             socket.on('message', function (m) {
                 addBubble(m)
                 if (m.sender !== 'admin') return
-                typingEl.style.display = 'none'
+                setAdminTyping(false)
                 if (isOpen() && !document.hidden) socket.emit('read')
                 else {
                     setUnread(unread + 1)
@@ -629,10 +646,7 @@
                 }
                 if (m.auto && !contact.email) askContact("Leave your email and I'll follow up there if you need to go.")
             })
-            socket.on('admin_typing', function (on) {
-                typingEl.style.display = on ? 'block' : 'none'
-                if (on) scrollDown()
-            })
+            socket.on('admin_typing', setAdminTyping)
         })
     }
 
@@ -741,10 +755,13 @@
 
     var typingTimer = null
     var typingSent = false
+    var typingSentAt = 0
     function notifyTyping() {
         if (!socket || !socket.connected) return
-        if (!typingSent) {
+        // Re-send every few seconds so a long message keeps the bubble showing on Evan's side.
+        if (!typingSent || Date.now() - typingSentAt > 3000) {
             typingSent = true
+            typingSentAt = Date.now()
             socket.emit('typing', true)
         }
         clearTimeout(typingTimer)
