@@ -11,7 +11,7 @@
  *   data-greeting="Hi, thanks for stopping by! ..."
  *   data-teaser="Have a project in mind? ..."
  *   data-teaser-delay="8"                 seconds before the welcome teaser appears (0 = never)
- *   data-teaser-exclude="/contact,/book-a-discovery-call"   paths where the teaser stays hidden
+ *   data-teaser-exclude="/lets-talk,/contact"   paths where the teaser stays hidden
  *   data-booking-url="https://.../book-a-discovery-call/"
  *   data-hide-on-teaser="CSS selector"    on phones, hidden while the teaser shows (your reviews badge)
  *   data-hide-on="single-post,blog,..."  WordPress body classes where the chat doesn't appear at all
@@ -44,7 +44,7 @@
         ),
         teaser: attr('teaser', "Have a project in mind? I'm here if you have any questions."),
         teaserDelay: Number(attr('teaser-delay', '8')),
-        teaserExclude: attr('teaser-exclude', '/contact,/book-a-discovery-call')
+        teaserExclude: attr('teaser-exclude', '/lets-talk,/contact')
             .split(',')
             .map(function (p) {
                 return p.trim().replace(/\/$/, '')
@@ -56,8 +56,23 @@
             '[class*="reviews-badge"],[id*="reviews-badge"],[class*="google-reviews"],[id*="google-reviews"],[class*="dmg-grb"],[id*="dmg-grb"]'
         ),
         // Blog posts, the blog page and blog archives (WordPress adds these classes to <body>).
-        // Booking pages: the visitor is already booking, so the chat stays out of the way.
-        hidePaths: attr('hide-paths', '/book-a-discovery-call,/schedule-ai-audit,/booking-confirmed')
+        // Booking and thank-you pages, legal pages, careers and the client questionnaire:
+        // the chat would only get in the way there.
+        hidePaths: attr(
+            'hide-paths',
+            [
+                '/book-a-discovery-call',
+                '/schedule-ai-audit',
+                '/booking-confirmed',
+                '/discovery-call-confirmed',
+                '/thank-you',
+                '/thanks-schedule-discovery-call',
+                '/privacy-policy',
+                '/terms-of-use',
+                '/careers',
+                '/website-questionnaire'
+            ].join(',')
+        )
             .split(',')
             .map(function (p) {
                 return p.trim().replace(/\/$/, '')

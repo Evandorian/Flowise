@@ -79,11 +79,11 @@ Everything has a sensible default. Each of these can be changed with an attribut
 | `data-greeting`       | Hi, thanks for stopping by! …                                   |
 | `data-teaser`         | Have a project in mind? I'm here if you have any questions.     |
 | `data-teaser-delay`   | `8` (seconds; `0` turns the teaser off)                         |
-| `data-teaser-exclude` | `/contact,/book-a-discovery-call`                               |
+| `data-teaser-exclude` | `/lets-talk,/contact`                               |
 | `data-booking-url`    | `https://dorianmediagroup.com/book-a-discovery-call/`           |
 | `data-hide-on-teaser` | selectors for the Google reviews badge (only floating elements) |
 | `data-hide-on`        | `single-post,blog,archive,category,tag,author,date,search` (no chat on blog posts, the blog page or blog archives) |
-| `data-hide-paths`     | `/book-a-discovery-call,/schedule-ai-audit,/booking-confirmed` (no chat on booking pages) |
+| `data-hide-paths`     | booking, thank-you, legal, careers and questionnaire pages (no chat there) |
 | `data-color`          | `#28b0ff`                                                       |
 
 ## 4. Conversion tracking (Google Tag Manager)
