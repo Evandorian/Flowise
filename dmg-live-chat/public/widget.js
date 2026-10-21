@@ -15,6 +15,7 @@
  *   data-booking-url="https://.../book-a-discovery-call/"
  *   data-hide-on-teaser="CSS selector"    on phones, hidden while the teaser shows (your reviews badge)
  *   data-hide-on="single-post,blog,..."  WordPress body classes where the chat doesn't appear at all
+ *   data-hide-paths="/book-a-discovery-call,..."  pages where the chat doesn't appear at all
  *   data-color="#28b0ff"
  *   data-position="right" | "left"
  */
@@ -55,6 +56,13 @@
             '[class*="reviews-badge"],[id*="reviews-badge"],[class*="google-reviews"],[id*="google-reviews"],[class*="dmg-grb"],[id*="dmg-grb"]'
         ),
         // Blog posts, the blog page and blog archives (WordPress adds these classes to <body>).
+        // Booking pages: the visitor is already booking, so the chat stays out of the way.
+        hidePaths: attr('hide-paths', '/book-a-discovery-call,/schedule-ai-audit,/booking-confirmed')
+            .split(',')
+            .map(function (p) {
+                return p.trim().replace(/\/$/, '')
+            })
+            .filter(Boolean),
         hideOn: attr('hide-on', 'single-post,blog,archive,category,tag,author,date,search')
             .split(',')
             .map(function (c) {
@@ -454,8 +462,12 @@
         restoreBadge()
     }
     function teaserAllowedHere() {
+        return cfg.teaserDelay > 0 && !onPaths(cfg.teaserExclude)
+    }
+
+    function onPaths(list) {
         var p = location.pathname.replace(/\/$/, '')
-        return cfg.teaserDelay > 0 && !cfg.teaserExclude.some(function (x) {
+        return list.some(function (x) {
             return p === x || p.indexOf(x + '/') === 0
         })
     }
@@ -853,9 +865,11 @@
     // ------------------------------------------------------------ boot
 
     function boot() {
-        var hidden = cfg.hideOn.some(function (c) {
-            return document.body.classList.contains(c)
-        })
+        var hidden =
+            onPaths(cfg.hidePaths) ||
+            cfg.hideOn.some(function (c) {
+                return document.body.classList.contains(c)
+            })
         if (hidden && !/dmgchat=/.test(location.hash)) return
         document.body.appendChild(host)
 
