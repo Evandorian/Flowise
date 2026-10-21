@@ -133,6 +133,12 @@ app.get('/widget.js', (req, res) => {
     res.set('Cache-Control', 'public, max-age=300')
     res.sendFile(path.join(__dirname, 'public', 'widget.js'))
 })
+// iPhones look for the home-screen icon at the top of the domain too.
+const iconFile = path.join(__dirname, 'public', 'admin', 'apple-touch-icon.png')
+for (const route of ['/apple-touch-icon.png', '/apple-touch-icon-precomposed.png', '/admin/apple-touch-icon-precomposed.png']) {
+    app.get(route, (req, res) => res.sendFile(iconFile))
+}
+app.get(['/favicon.ico', '/admin/favicon.ico'], (req, res) => res.sendFile(path.join(__dirname, 'public', 'admin', 'icon-192.png')))
 app.use('/admin', express.static(path.join(__dirname, 'public', 'admin'), { index: 'index.html' }))
 app.get('/demo', (req, res) => res.sendFile(path.join(__dirname, 'public', 'demo.html')))
 
