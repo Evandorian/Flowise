@@ -25,9 +25,17 @@ async function sendWebPush(payload) {
             try {
                 await webpush.sendNotification(sub, JSON.stringify(payload), { TTL: 60 * 60, urgency: 'high' })
             } catch (err) {
-                // 404/410 mean the phone unsubscribed or the app was removed.
-                if (err.statusCode === 404 || err.statusCode === 410) store.deletePushSubscription(sub.endpoint)
-                else console.error('[push] failed:', err.statusCode || '', err.body || err.message)
+                // 404/410: the phone unsubscribed or the app was removed. 400/403 with a key
+                // mismatch: it was made for an old server key and can never work. The app
+                // re-subscribes the next time it opens.
+                const stale =
+                    err.statusCode === 404 ||
+                    err.statusCode === 410 ||
+                    ((err.statusCode === 400 || err.statusCode === 403) && /VapidPkHashMismatch/i.test(err.body || ''))
+                if (stale) {
+                    store.deletePushSubscription(sub.endpoint)
+                    console.error('[push] removed a stale subscription:', err.statusCode, err.body || '')
+                } else console.error('[push] failed:', err.statusCode || '', err.body || err.message)
             }
         })
     )

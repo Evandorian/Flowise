@@ -2,9 +2,13 @@ const nodemailer = require('nodemailer')
 const Anthropic = require('@anthropic-ai/sdk')
 
 // ---------------------------------------------------------------------------
-// Email (SMTP). Used to email replies to visitors who left, and as a backup
-// alert to you. Everything is skipped quietly when SMTP isn't configured.
+// Email. Used to email replies to visitors who left, and as a backup alert to
+// you. Sends through Resend's HTTP API when RESEND_API_KEY is set (needed on
+// hosts that block SMTP ports, like Sevalla), otherwise SMTP. Everything is
+// skipped quietly when neither is configured.
 // ---------------------------------------------------------------------------
+
+const RESEND_API_KEY = process.env.RESEND_API_KEY
 
 const transport = process.env.SMTP_HOST
     ? nodemailer.createTransport({
@@ -16,7 +20,7 @@ const transport = process.env.SMTP_HOST
     : null
 
 const MAIL_FROM = process.env.MAIL_FROM || process.env.SMTP_USER
-const emailEnabled = Boolean(transport && MAIL_FROM)
+const emailEnabled = Boolean((RESEND_API_KEY || transport) && MAIL_FROM)
 
 const escapeHtml = (s) =>
     String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c])
@@ -24,6 +28,16 @@ const escapeHtml = (s) =>
 async function sendEmail({ to, subject, text, html, replyTo }) {
     if (!emailEnabled || !to) return false
     try {
+        if (RESEND_API_KEY) {
+            const res = await fetch(process.env.RESEND_API_URL || 'https://api.resend.com/emails', {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({ from: MAIL_FROM, to: [to], subject, text, html, reply_to: replyTo || undefined }),
+                signal: AbortSignal.timeout(15000)
+            })
+            if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 300)}`)
+            return true
+        }
         await transport.sendMail({ from: MAIL_FROM, to, subject, text, html, replyTo })
         return true
     } catch (err) {

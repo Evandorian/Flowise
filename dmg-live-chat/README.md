@@ -121,7 +121,7 @@ ADMIN_PASSWORD=test npm start
 | File                | What it does                                                                     |
 | ------------------- | -------------------------------------------------------------------------------- |
 | `server.js`         | Chat server: realtime messaging, auto-reply, follow-up emails, uploads, spam rules |
-| `integrations.js`   | Email (SMTP), MailerLite and AI suggested replies (Claude)                       |
+| `integrations.js`   | Email (Resend or SMTP), MailerLite and AI suggested replies (Claude)             |
 | `notify.js`         | Push notifications (and ntfy, if configured)                                     |
 | `db.js`             | SQLite storage                                                                   |
 | `public/widget.js`  | The website chat (self-contained; styles isolated from your theme)               |

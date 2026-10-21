@@ -12,14 +12,24 @@ const PASSWORD = 'test-password'
 let proc
 let dataDir
 let geoServer
+const sentEmails = []
 
 const once = (socket, event) => new Promise((resolve) => socket.once(event, resolve))
 const emit = (socket, event, payload) => new Promise((resolve) => socket.emit(event, payload, resolve))
 
 before(async () => {
-    // Stand-in for the IP location service.
+    // Stand-in for the IP location service and Resend's email API.
     geoServer = require('http').createServer((req, res) => {
         res.setHeader('Content-Type', 'application/json')
+        if (req.method === 'POST' && req.url === '/emails') {
+            let body = ''
+            req.on('data', (d) => (body += d))
+            req.on('end', () => {
+                sentEmails.push({ auth: req.headers.authorization, ...JSON.parse(body) })
+                res.end('{"id":"test"}')
+            })
+            return
+        }
         res.end(JSON.stringify({ success: true, city: 'Kansas City', region: 'Missouri', country: 'United States', country_code: 'US', ip: req.url.slice(1) }))
     })
     await new Promise((resolve) => geoServer.listen(0, resolve))
@@ -33,7 +43,13 @@ before(async () => {
             NTFY_TOPIC: '',
             SPAM_MIN_SECONDS: '0',
             AUTO_REPLY_SECONDS: '1',
-            GEO_LOOKUP_URL: `http://localhost:${geoServer.address().port}/{ip}`
+            GEO_LOOKUP_URL: `http://localhost:${geoServer.address().port}/{ip}`,
+            RESEND_API_KEY: 're_test',
+            RESEND_API_URL: `http://localhost:${geoServer.address().port}/emails`,
+            MAIL_FROM: 'Evan <chat@example.com>',
+            ADMIN_EMAIL: 'owner@example.com',
+            ADMIN_ALERT_SECONDS: '1',
+            SMTP_HOST: ''
         },
         stdio: ['ignore', 'pipe', 'inherit']
     })
@@ -206,6 +222,22 @@ test("shows the visitor's location and time zone", async () => {
     assert.strictEqual(c.timezone, 'America/Chicago')
     visitor.close()
     admin.close()
+})
+
+test('emails you through Resend when a chat goes unanswered', async () => {
+    const visitor = io(`${BASE}/visitor`, { auth: {}, extraHeaders: { 'x-forwarded-for': '198.51.100.9' } })
+    const session = await once(visitor, 'session')
+    assert.ok((await emit(visitor, 'message', { body: 'Anyone there?' })).ok)
+    let mail
+    for (let i = 0; i < 40 && !mail; i++) {
+        await new Promise((r) => setTimeout(r, 100))
+        mail = sentEmails.find((m) => m.to[0] === 'owner@example.com' && m.text.includes(session.visitorId))
+    }
+    assert.ok(mail, 'alert email was sent')
+    assert.strictEqual(mail.auth, 'Bearer re_test')
+    assert.strictEqual(mail.from, 'Evan <chat@example.com>')
+    assert.match(mail.text, /Anyone there\?/)
+    visitor.close()
 })
 
 test('spam: honeypot and blocked visitors are ignored', async () => {

@@ -542,6 +542,14 @@
         return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)))
     }
 
+    function sameKey(sub, publicKey) {
+        const key = sub.options && sub.options.applicationServerKey
+        if (!key) return true // browser doesn't say; assume it matches
+        const a = new Uint8Array(key)
+        const b = urlBase64ToUint8Array(publicKey)
+        return a.length === b.length && a.every((v, i) => v === b[i])
+    }
+
     async function currentSubscription() {
         if (!pushSupported) return null
         const reg = await navigator.serviceWorker.ready
@@ -558,6 +566,11 @@
             const { publicKey } = await api('/api/admin/push/public-key')
             const reg = await navigator.serviceWorker.ready
             let sub = await reg.pushManager.getSubscription()
+            // A subscription made for an older server key can never receive pushes: replace it.
+            if (sub && !sameKey(sub, publicKey)) {
+                await sub.unsubscribe()
+                sub = null
+            }
             if (!sub) sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array(publicKey) })
             await api('/api/admin/push/subscribe', sub.toJSON())
         } catch (err) {
@@ -582,7 +595,16 @@
             stateEl.textContent = 'This browser does not support push notifications.'
             return
         }
-        const sub = await currentSubscription()
+        let sub = await currentSubscription()
+        if (sub) {
+            try {
+                const { publicKey } = await api('/api/admin/push/public-key')
+                if (!sameKey(sub, publicKey)) {
+                    await sub.unsubscribe()
+                    sub = null
+                }
+            } catch (e) {}
+        }
         if (sub && Notification.permission === 'granted') {
             // Re-send in case the server lost it (e.g. a fresh database).
             api('/api/admin/push/subscribe', sub.toJSON()).catch(() => {})
