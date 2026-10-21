@@ -14,7 +14,7 @@ Your own live chat for **dorianmediagroup.com**. Visitors chat from a button on 
 
 **On your website**
 
--   A chat button with your photo and an always-on green dot. A welcome teaser pops up after 8 seconds, once per visit, except on the Contact and Book a Discovery Call pages.
+-   A chat button with your photo and an always-on green dot, on every page except blog posts, the blog page and blog archives. A welcome teaser pops up after 8 seconds, once per visit, except on the Contact and Book a Discovery Call pages.
 -   On phones, your Google reviews badge hides while the teaser shows and comes back as soon as it's closed.
 -   The chat opens as a panel on desktop and a slide-up sheet on phones (swipe down to close).
 -   The welcome message has **Book a Discovery Call** and **Send an Email** buttons. Send an Email is a short form inside the chat.
@@ -80,6 +80,7 @@ Everything has a sensible default. Each of these can be changed with an attribut
 | `data-teaser-exclude` | `/contact,/book-a-discovery-call`                               |
 | `data-booking-url`    | `https://dorianmediagroup.com/book-a-discovery-call/`           |
 | `data-hide-on-teaser` | selectors for the Google reviews badge (only floating elements) |
+| `data-hide-on`        | `single-post,blog,archive,category,tag,author,date,search` (no chat on blog posts, the blog page or blog archives) |
 | `data-color`          | `#28b0ff`                                                       |
 
 ## 4. Conversion tracking (Google Tag Manager)

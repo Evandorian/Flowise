@@ -14,6 +14,7 @@
  *   data-teaser-exclude="/contact,/book-a-discovery-call"   paths where the teaser stays hidden
  *   data-booking-url="https://.../book-a-discovery-call/"
  *   data-hide-on-teaser="CSS selector"    on phones, hidden while the teaser shows (your reviews badge)
+ *   data-hide-on="single-post,blog,..."  WordPress body classes where the chat doesn't appear at all
  *   data-color="#28b0ff"
  *   data-position="right" | "left"
  */
@@ -53,6 +54,13 @@
             'hide-on-teaser',
             '[class*="reviews-badge"],[id*="reviews-badge"],[class*="google-reviews"],[id*="google-reviews"],[class*="dmg-grb"],[id*="dmg-grb"]'
         ),
+        // Blog posts, the blog page and blog archives (WordPress adds these classes to <body>).
+        hideOn: attr('hide-on', 'single-post,blog,archive,category,tag,author,date,search')
+            .split(',')
+            .map(function (c) {
+                return c.trim()
+            })
+            .filter(Boolean),
         color: attr('color', '#28b0ff'),
         position: attr('position', 'right') === 'left' ? 'left' : 'right'
     }
@@ -824,6 +832,10 @@
     // ------------------------------------------------------------ boot
 
     function boot() {
+        var hidden = cfg.hideOn.some(function (c) {
+            return document.body.classList.contains(c)
+        })
+        if (hidden && !/dmgchat=/.test(location.hash)) return
         document.body.appendChild(host)
 
         // Link from a follow-up email: "#dmgchat=<id>.<token>" restores the conversation.
