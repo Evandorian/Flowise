@@ -1,16 +1,21 @@
 /*
  * DMG Live Chat widget.
  *
- * Embed on any page:
+ * Embed on every page (WordPress: WPCode > Footer):
  *   <script src="https://YOUR-CHAT-SERVER/widget.js" defer></script>
  *
  * Optional attributes on the script tag:
- *   data-title="Chat with Evan"
- *   data-subtitle="Dorian Media Group"
- *   data-greeting="Hey! Have a question? ..."
- *   data-color="#0f172a"
+ *   data-name="Evan Dorian"
+ *   data-role="Founder / Creative Director"
+ *   data-photo="https://.../photo.webp"
+ *   data-greeting="Hi, thanks for stopping by! ..."
+ *   data-teaser="Have a project in mind? ..."
+ *   data-teaser-delay="8"                 seconds before the welcome teaser appears (0 = never)
+ *   data-teaser-exclude="/contact,/book-a-discovery-call"   paths where the teaser stays hidden
+ *   data-booking-url="https://.../book-a-discovery-call/"
+ *   data-hide-on-teaser="CSS selector"    on phones, hidden while the teaser shows (your reviews badge)
+ *   data-color="#28b0ff"
  *   data-position="right" | "left"
- *   data-avatar="https://.../photo.jpg"
  */
 ;(function () {
     if (window.__dmgLiveChat) return
@@ -23,37 +28,70 @@
             return all[all.length - 1]
         })()
     var BASE = new URL(script.src).origin
-    var cfg = {
-        title: script.getAttribute('data-title') || 'Chat with Evan',
-        subtitle: script.getAttribute('data-subtitle') || 'Dorian Media Group',
-        greeting:
-            script.getAttribute('data-greeting') ||
-            "Hey there! 👋 I'm Evan. Got a question about your website, SEO, or marketing? Send me a message and I'll reply right here.",
-        color: script.getAttribute('data-color') || '#0f172a',
-        position: script.getAttribute('data-position') === 'left' ? 'left' : 'right',
-        avatar: script.getAttribute('data-avatar') || ''
+    var attr = function (name, fallback) {
+        var v = script.getAttribute('data-' + name)
+        return v === null || v === '' ? fallback : v
     }
+    var cfg = {
+        name: attr('name', 'Evan Dorian'),
+        role: attr('role', 'Founder / Creative Director'),
+        photo: attr('photo', 'https://dorianmediagroup.com/wp-content/uploads/2026/10/Evan-Dorian.webp'),
+        greeting: attr(
+            'greeting',
+            "Hi, thanks for stopping by! Take a look around, and if you have a project in mind, I'd love to hear about it. Send me a message here, or choose an option below."
+        ),
+        teaser: attr('teaser', "Have a project in mind? I'm here if you have any questions."),
+        teaserDelay: Number(attr('teaser-delay', '8')),
+        teaserExclude: attr('teaser-exclude', '/contact,/book-a-discovery-call')
+            .split(',')
+            .map(function (p) {
+                return p.trim().replace(/\/$/, '')
+            })
+            .filter(Boolean),
+        bookingUrl: attr('booking-url', 'https://dorianmediagroup.com/book-a-discovery-call/'),
+        hideOnTeaser: attr(
+            'hide-on-teaser',
+            '[class*="reviews-badge"],[id*="reviews-badge"],[class*="google-reviews"],[id*="google-reviews"],[class*="dmg-grb"],[id*="dmg-grb"]'
+        ),
+        color: attr('color', '#28b0ff'),
+        position: attr('position', 'right') === 'left' ? 'left' : 'right'
+    }
+    var firstName = cfg.name.split(' ')[0]
 
     var STORE_KEY = 'dmg_chat_session'
     var OPEN_KEY = 'dmg_chat_open'
-    var storage = {
-        get: function (k, s) {
-            try {
-                return JSON.parse((s || localStorage).getItem(k))
-            } catch (e) {
-                return null
-            }
-        },
-        set: function (k, v, s) {
-            try {
-                ;(s || localStorage).setItem(k, JSON.stringify(v))
-            } catch (e) {}
+    var TEASED_KEY = 'dmg_chat_teased'
+    function getStore(k, s) {
+        try {
+            return JSON.parse((s || localStorage).getItem(k))
+        } catch (e) {
+            return null
         }
+    }
+    function setStore(k, v, s) {
+        try {
+            ;(s || localStorage).setItem(k, JSON.stringify(v))
+        } catch (e) {}
+    }
+
+    // 7. Conversion tracking for Google Tag Manager / GA4.
+    function track(event, params) {
+        try {
+            window.dataLayer = window.dataLayer || []
+            var data = { event: event, chat_page: location.pathname }
+            for (var k in params || {}) data[k] = params[k]
+            window.dataLayer.push(data)
+        } catch (e) {}
     }
 
     function loadSocketIo(cb) {
         if (window.io && window.io.connect) return cb(window.io)
+        var existing = document.getElementById('dmg-chat-sio')
+        if (existing) return existing.addEventListener('load', function () {
+            cb(window.io)
+        })
         var s = document.createElement('script')
+        s.id = 'dmg-chat-sio'
         s.src = BASE + '/socket.io/socket.io.min.js'
         s.async = true
         s.onload = function () {
@@ -64,95 +102,157 @@
 
     // ------------------------------------------------------------------ UI
 
+    var side = cfg.position
+    var ICON = {
+        close: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
+        down: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M6 9l6 6 6-6"/></svg>',
+        send: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>',
+        clip: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5l-8.6 8.6a5.5 5.5 0 01-7.8-7.8l8.6-8.6a3.7 3.7 0 015.2 5.2l-8.6 8.6a1.8 1.8 0 01-2.6-2.6l8-8"/></svg>',
+        cal: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M16 3v4M8 3v4M3 10h18"/></svg>',
+        mail: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M3 7l9 6 9-6"/></svg>',
+        file: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3H7a2 2 0 00-2 2v14a2 2 0 002 2h10a2 2 0 002-2V8z"/><path d="M14 3v5h5"/></svg>'
+    }
+
     var host = document.createElement('div')
     host.id = 'dmg-live-chat'
-    host.style.cssText = 'position:fixed;z-index:2147483000;bottom:0;' + cfg.position + ':0;'
+    host.style.cssText = 'position:fixed;z-index:2147483000;bottom:0;' + side + ':0;width:0;height:0;'
     var root = host.attachShadow({ mode: 'open' })
-    var side = cfg.position
 
     root.innerHTML =
         '<style>' +
-        ':host{all:initial}' +
-        '*{box-sizing:border-box;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}' +
-        '.launcher{position:fixed;bottom:20px;' + side + ':20px;width:60px;height:60px;border-radius:50%;border:none;cursor:pointer;' +
-        'background:var(--c);color:#fff;box-shadow:0 6px 24px rgba(0,0,0,.25);display:flex;align-items:center;justify-content:center;transition:transform .2s}' +
-        '.launcher:hover{transform:scale(1.06)}' +
-        '.launcher svg{width:28px;height:28px}' +
-        '.badge{position:absolute;top:-2px;right:-2px;min-width:20px;height:20px;padding:0 6px;border-radius:10px;background:#ef4444;color:#fff;' +
+        ':host{all:initial;--c:' + cfg.color + ';--ink:#0e1015;--text:#1c1f27;--muted:#5b6474;--line:#ebeced;--field:#d9dce1;--soft:#f7f8f9;--ok:#22c55e}' +
+        '*{box-sizing:border-box;font-family:Arial,Helvetica,sans-serif}' +
+        'button{font:inherit;cursor:pointer}' +
+        '.disp{font-family:Montserrat,Arial,sans-serif}' +
+        '.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}' +
+        'svg{display:block}' +
+        // avatar
+        '.av{position:relative;flex:none;border-radius:50%}' +
+        '.av img{width:100%;height:100%;border-radius:50%;object-fit:cover;object-position:50% 0;display:block;background:#e3f4ff}' +
+        '.av .dot{position:absolute;right:0;bottom:0;width:28%;height:28%;min-width:10px;min-height:10px;border-radius:50%;background:var(--ok);border:2px solid #fff}' +
+        // launcher
+        '.launcher{position:fixed;bottom:20px;' + side + ':20px;width:62px;height:62px;padding:0;border-radius:50%;border:3px solid #fff;background:#fff;' +
+        'box-shadow:0 10px 30px rgba(0,0,0,.35);transition:transform .2s cubic-bezier(.22,1,.36,1)}' +
+        '.launcher:hover{transform:scale(1.05)}' +
+        '.launcher .av{width:100%;height:100%}' +
+        '.launcher .av .dot{border:3px solid #fff;right:-2px;bottom:0}' +
+        '.launcher .x{display:none;width:100%;height:100%;align-items:center;justify-content:center;color:var(--ink)}' +
+        '.launcher .x svg{width:22px;height:22px}' +
+        '.launcher.open .av{display:none}.launcher.open .x{display:flex}' +
+        '.badge{position:absolute;top:-4px;' + (side === 'right' ? 'left' : 'right') + ':-4px;min-width:22px;height:22px;padding:0 6px;border-radius:11px;background:#ef4444;color:#fff;' +
         'font-size:12px;font-weight:700;display:none;align-items:center;justify-content:center;border:2px solid #fff}' +
-        '.teaser{position:fixed;bottom:92px;' + side + ':20px;max-width:260px;background:#fff;color:#111827;padding:12px 14px;border-radius:14px;' +
-        'box-shadow:0 6px 24px rgba(0,0,0,.18);font-size:14px;line-height:1.4;cursor:pointer;display:none}' +
-        '.teaser .x{float:right;margin-left:8px;color:#9ca3af;cursor:pointer;font-size:16px;line-height:1}' +
-        '.panel{position:fixed;bottom:92px;' + side + ':20px;width:370px;height:560px;max-height:calc(100vh - 112px);background:#fff;border-radius:16px;' +
-        'box-shadow:0 12px 48px rgba(0,0,0,.25);display:none;flex-direction:column;overflow:hidden}' +
-        '.panel.open{display:flex;animation:pop .18s ease-out}' +
+        // teaser
+        '.teaser{position:fixed;bottom:96px;' + side + ':20px;width:320px;background:#fff;color:var(--ink);border-radius:18px;padding:14px 10px 14px 16px;' +
+        'box-shadow:0 18px 50px rgba(0,0,0,.35);display:none;flex-direction:column;gap:8px;animation:pop .25s cubic-bezier(.22,1,.36,1)}' +
+        '.teaser.show{display:flex}' +
+        '.trow{display:flex;align-items:center;gap:10px}' +
+        '.trow .av{width:36px;height:36px}' +
+        '.who{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0}' +
+        '.who .n{font-weight:700;font-size:14px;color:var(--ink)}.who .r{font-size:12px;color:var(--muted)}' +
+        '.tclose{width:40px;height:40px;margin:-8px -4px -8px 0;border:none;background:transparent;color:var(--muted);border-radius:10px;display:flex;align-items:center;justify-content:center}' +
+        '.tclose svg{width:16px;height:16px}' +
+        '.ttext{border:none;background:none;padding:0;text-align:left;font-size:14.5px;line-height:1.45;color:var(--text)}' +
+        // panel
+        '.backdrop{display:none}' +
+        '.panel{position:fixed;bottom:96px;' + side + ':20px;width:384px;max-height:min(640px,calc(100vh - 120px));background:#fff;color:var(--ink);border-radius:20px;' +
+        'overflow:hidden;display:none;flex-direction:column;box-shadow:0 24px 70px rgba(0,0,0,.4),0 0 0 1px rgba(14,16,21,.06)}' +
+        '.panel.open{display:flex;animation:pop .22s cubic-bezier(.22,1,.36,1)}' +
         '@keyframes pop{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}' +
-        '.head{background:var(--c);color:#fff;padding:16px;display:flex;align-items:center;gap:12px}' +
-        '.avatar{width:42px;height:42px;border-radius:50%;background:rgba(255,255,255,.18);display:flex;align-items:center;justify-content:center;' +
-        'font-weight:700;font-size:18px;flex:none;background-size:cover;background-position:center;position:relative}' +
-        '.avatar .dot{position:absolute;bottom:0;right:0;width:12px;height:12px;border-radius:50%;background:#9ca3af;border:2px solid var(--c)}' +
-        '.avatar .dot.on{background:#22c55e}' +
-        '.head .t{font-weight:700;font-size:16px}' +
-        '.head .s{font-size:12.5px;opacity:.85;margin-top:2px}' +
-        '.head .close{margin-left:auto;background:none;border:none;color:#fff;cursor:pointer;padding:6px;opacity:.85}' +
-        '.head .close svg{width:20px;height:20px}' +
-        '.msgs{flex:1;overflow-y:auto;padding:16px;background:#f8fafc;display:flex;flex-direction:column;gap:8px}' +
-        '.m{max-width:80%;padding:10px 13px;border-radius:16px;font-size:14.5px;line-height:1.4;white-space:pre-wrap;word-wrap:break-word}' +
+        '.handle{display:none}' +
+        '.head{display:flex;align-items:center;gap:14px;padding:18px 14px 18px 20px;border-bottom:1px solid var(--line);flex:none}' +
+        '.head .av{width:52px;height:52px}.head .av .dot{border-width:2.5px}' +
+        '.head .who .n{font-size:17px}.head .who .r{font-size:13px}' +
+        '.iconbtn{width:44px;height:44px;border:none;background:transparent;color:var(--muted);border-radius:12px;display:flex;align-items:center;justify-content:center}' +
+        '.iconbtn svg{width:20px;height:20px}' +
+        '.iconbtn:hover{background:var(--soft)}' +
+        '.err{display:none;background:#fef2f2;color:#b91c1c;font-size:12.5px;padding:8px 14px;flex:none}' +
+        '.msgs{flex:1 1 auto;min-height:0;overflow-y:auto;background:var(--soft);padding:18px;display:flex;flex-direction:column;gap:10px;overscroll-behavior:contain}' +
+        '.stamp{align-self:center;font-size:12px;color:var(--muted);margin:4px 0 0}' +
+        '.m{max-width:85%;padding:12px 15px;font-size:15px;line-height:1.5;white-space:pre-wrap;word-wrap:break-word}' +
         '.m a{color:inherit;text-decoration:underline}' +
-        '.m.visitor{align-self:flex-end;background:var(--c);color:#fff;border-bottom-right-radius:4px}' +
-        '.m.admin{align-self:flex-start;background:#fff;color:#111827;border:1px solid #e5e7eb;border-bottom-left-radius:4px}' +
-        '.m.pending{opacity:.6}' +
-        '.time{font-size:11px;color:#9ca3af;align-self:center;margin:6px 0 2px}' +
-        '.typing{align-self:flex-start;display:none;background:#fff;border:1px solid #e5e7eb;border-radius:16px;padding:10px 14px}' +
-        '.typing span{display:inline-block;width:6px;height:6px;margin:0 2px;border-radius:50%;background:#9ca3af;animation:b 1.2s infinite}' +
+        '.m.admin{align-self:flex-start;background:#fff;border:1px solid var(--line);border-radius:18px 18px 18px 6px;color:var(--text)}' +
+        '.m.visitor{align-self:flex-end;background:var(--ink);color:#fff;border-radius:18px 18px 6px 18px}' +
+        '.m.pending{opacity:.55}' +
+        '.m img{display:block;max-width:100%;max-height:220px;border-radius:10px;margin:2px 0}' +
+        '.m .filechip{display:flex;align-items:center;gap:8px;text-decoration:none}.m .filechip svg{width:18px;height:18px;flex:none}' +
+        '.actions{display:flex;flex-direction:column;gap:8px;max-width:85%}' +
+        '.act{display:flex;align-items:center;gap:10px;min-height:46px;padding:0 16px;border-radius:14px;font-weight:700;font-size:14.5px;text-decoration:none;border:1px solid var(--field);background:#fff;color:var(--ink);text-align:left}' +
+        '.act svg{width:18px;height:18px;flex:none}' +
+        '.act.primary{background:var(--c);border-color:var(--c)}' +
+        '.typing{align-self:flex-start;display:none;background:#fff;border:1px solid var(--line);border-radius:16px;padding:12px 14px}' +
+        '.typing span{display:inline-block;width:6px;height:6px;margin:0 2px;border-radius:50%;background:#9aa3b2;animation:b 1.2s infinite}' +
         '.typing span:nth-child(2){animation-delay:.2s}.typing span:nth-child(3){animation-delay:.4s}' +
         '@keyframes b{0%,60%,100%{transform:none;opacity:.5}30%{transform:translateY(-4px);opacity:1}}' +
-        '.card{align-self:stretch;background:#fff;border:1px solid #e5e7eb;border-radius:12px;padding:12px;font-size:13.5px;color:#374151}' +
-        '.card p{margin:0 0 8px}' +
-        '.card input{width:100%;padding:9px 10px;border:1px solid #d1d5db;border-radius:8px;font-size:14px;margin-bottom:6px;color:#111827}' +
-        '.card .row{display:flex;gap:6px;justify-content:flex-end}' +
-        '.card button{border:none;border-radius:8px;padding:8px 12px;font-size:13px;cursor:pointer}' +
-        '.card .save{background:var(--c);color:#fff}.card .skip{background:#f3f4f6;color:#374151}' +
-        '.card .err{color:#dc2626;font-size:12px;margin-bottom:6px;display:none}' +
-        '.compose{display:flex;align-items:flex-end;gap:8px;padding:10px 12px;border-top:1px solid #e5e7eb;background:#fff}' +
-        '.compose textarea{flex:1;resize:none;border:1px solid #d1d5db;border-radius:20px;padding:10px 14px;font-size:15px;max-height:120px;' +
-        'outline:none;line-height:1.35;color:#111827;background:#fff}' +
+        '.card{align-self:stretch;background:#fff;border:1px solid var(--line);border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:10px}' +
+        '.card p{margin:0;font-size:14px;line-height:1.45;color:var(--text)}' +
+        '.card label{font-size:12.5px;font-weight:700;color:#3b4250;display:flex;flex-direction:column;gap:4px}' +
+        '.card input,.card textarea{height:44px;border:1px solid var(--field);border-radius:10px;padding:0 12px;font:inherit;font-size:16px;color:var(--ink);background:#fff;width:100%}' +
+        '.card textarea{height:88px;padding:10px 12px;resize:none}' +
+        '.card .note{font-size:12px;line-height:1.4;color:var(--muted)}' +
+        '.card .cerr{display:none;color:#b91c1c;font-size:12.5px}' +
+        '.row{display:flex;gap:8px;justify-content:flex-end}' +
+        '.btn{height:44px;padding:0 18px;border:none;border-radius:12px;font-size:14px;font-weight:700}' +
+        '.btn.ghost{background:#f1f2f4;color:#3b4250}.btn.main{background:var(--c);color:var(--ink)}' +
+        '.hp{position:absolute;left:-9999px;width:1px;height:1px;opacity:0}' +
+        '.compose{display:flex;align-items:flex-end;gap:6px;padding:12px 12px 10px;border-top:1px solid var(--line);background:#fff;flex:none}' +
+        '.compose textarea{flex:1;resize:none;border:1px solid var(--field);border-radius:22px;padding:12px 16px;font:inherit;font-size:15px;max-height:120px;' +
+        'outline:none;line-height:1.35;color:var(--ink);background:#fff;min-width:0}' +
         '.compose textarea:focus{border-color:var(--c)}' +
-        '.send{width:40px;height:40px;border-radius:50%;border:none;background:var(--c);color:#fff;cursor:pointer;flex:none;display:flex;align-items:center;justify-content:center}' +
-        '.send:disabled{opacity:.4;cursor:default}' +
-        '.send svg{width:18px;height:18px}' +
-        '.foot{text-align:center;font-size:11px;color:#9ca3af;padding:0 0 8px;background:#fff}' +
-        '.err-bar{background:#fef2f2;color:#b91c1c;font-size:12.5px;padding:8px 12px;display:none}' +
-        '@media (max-width:480px){.panel{bottom:0;' + side + ':0;width:100vw;height:100%;max-height:100%;border-radius:0}' +
-        '.panel.open ~ .launcher{display:none}}' +
+        '.compose .iconbtn{width:42px;height:46px}' +
+        '.send{width:46px;height:46px;flex:none;border:none;border-radius:50%;background:var(--c);color:var(--ink);display:flex;align-items:center;justify-content:center}' +
+        '.send svg{width:20px;height:20px}.send:disabled{opacity:.45;cursor:default}' +
+        '.foot{text-align:center;font-size:11.5px;color:var(--muted);padding:0 0 10px;background:#fff;flex:none}' +
+        // phones: slide-up sheet
+        '@media (max-width:480px){' +
+        '.launcher{bottom:16px;' + side + ':16px;width:58px;height:58px}' +
+        '.teaser{bottom:88px;' + side + ':16px;width:min(300px,calc(100vw - 32px));border-radius:18px 18px 6px 18px}' +
+        '.teaser .ttext{font-size:15px}' +
+        '.backdrop.open{display:block;position:fixed;inset:0;background:rgba(14,16,21,.55);border:none;padding:0;width:100%;height:100%}' +
+        '.panel{left:0;right:0;bottom:0;width:100%;max-height:none;height:90vh;height:90dvh;border-radius:22px 22px 0 0;transition:height .2s,border-radius .2s,transform .2s}' +
+        '.panel.full{height:100vh;height:100dvh;border-radius:0}' +
+        '.panel.open ~ .launcher{display:none}' +
+        '.handle{display:block;align-self:center;width:40px;height:5px;border-radius:3px;background:var(--field);margin:8px 0 0;flex:none}' +
+        '.head{padding:10px 10px 14px 18px}.head .av{width:48px;height:48px}' +
+        '.m{font-size:16px}.compose textarea{font-size:16px}.act{min-height:50px;font-size:15px}' +
+        '.foot{padding-bottom:max(10px,env(safe-area-inset-bottom))}' +
+        '}' +
+        '@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}' +
         '</style>' +
-        '<div class="teaser"><span class="x" aria-label="Dismiss">×</span><span class="tt"></span></div>' +
-        '<div class="panel" role="dialog" aria-label="Live chat">' +
-        '  <div class="head">' +
-        '    <div class="avatar"><span class="ini"></span><span class="dot"></span></div>' +
-        '    <div><div class="t"></div><div class="s"></div></div>' +
-        '    <button class="close" aria-label="Close chat"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>' +
-        '  </div>' +
-        '  <div class="err-bar"></div>' +
-        '  <div class="msgs" aria-live="polite"><div class="typing"><span></span><span></span><span></span></div></div>' +
-        '  <form class="compose">' +
-        '    <textarea rows="1" placeholder="Type your message…" aria-label="Message"></textarea>' +
-        '    <button class="send" type="submit" aria-label="Send" disabled><svg viewBox="0 0 24 24" fill="currentColor"><path d="M3.4 20.4l17.45-7.48a1 1 0 000-1.84L3.4 3.6a.99.99 0 00-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z"/></svg></button>' +
-        '  </form>' +
-        '  <div class="foot">Replies go straight to Evan\'s phone</div>' +
+        '<div class="teaser" role="dialog" aria-label="Message from ' + firstName + '">' +
+        '  <div class="trow"><div class="av"><img alt=""><span class="dot"></span></div>' +
+        '    <div class="who"><div class="n disp"></div><div class="r"></div></div>' +
+        '    <button type="button" class="tclose" aria-label="Dismiss">' + ICON.close + '</button></div>' +
+        '  <button type="button" class="ttext"></button>' +
         '</div>' +
-        '<button class="launcher" aria-label="Open chat">' +
-        '  <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3C6.48 3 2 6.94 2 11.8c0 2.4 1.1 4.57 2.88 6.16-.17 1.4-.8 2.67-1.8 3.65a.5.5 0 00.4.86c2.03-.1 3.86-.85 5.2-1.95.98.27 2.1.43 3.32.43 5.52 0 10-3.94 10-8.8S17.52 3 12 3z"/></svg>' +
+        '<button type="button" class="backdrop" aria-label="Close chat"></button>' +
+        '<section class="panel" role="dialog" aria-label="Chat">' +
+        '  <div class="handle" aria-hidden="true"></div>' +
+        '  <header class="head"><div class="av"><img alt=""><span class="dot"></span></div>' +
+        '    <div class="who"><div class="n disp"></div><div class="r"></div></div>' +
+        '    <button type="button" class="iconbtn min" aria-label="Minimize chat">' + ICON.down + '</button></header>' +
+        '  <div class="err" role="alert"></div>' +
+        '  <div class="msgs" aria-live="polite"><div class="typing" aria-label="typing"><span></span><span></span><span></span></div></div>' +
+        '  <form class="compose">' +
+        '    <input class="hp" name="website" tabindex="-1" autocomplete="off" aria-hidden="true">' +
+        '    <input type="file" class="file sr" accept="image/*,application/pdf" tabindex="-1" aria-hidden="true">' +
+        '    <button type="button" class="iconbtn attach" aria-label="Attach a photo or PDF">' + ICON.clip + '</button>' +
+        '    <label class="sr" for="dmg-msg">Message</label>' +
+        '    <textarea id="dmg-msg" rows="1" placeholder="Write a message…"></textarea>' +
+        '    <button class="send" type="submit" aria-label="Send message" disabled>' + ICON.send + '</button>' +
+        '  </form>' +
+        '  <div class="foot">Messages go straight to ' + firstName + '</div>' +
+        '</section>' +
+        '<button type="button" class="launcher" aria-label="Open chat with ' + firstName + '">' +
+        '  <div class="av"><img alt=""><span class="dot"></span></div><span class="x">' + ICON.close + '</span>' +
         '  <span class="badge"></span>' +
         '</button>'
-
-    host.style.setProperty('--c', cfg.color)
 
     var $ = function (sel) {
         return root.querySelector(sel)
     }
     var panel = $('.panel')
     var launcher = $('.launcher')
+    var backdrop = $('.backdrop')
     var badge = $('.badge')
     var msgs = $('.msgs')
     var typingEl = $('.typing')
@@ -160,18 +260,22 @@
     var input = $('textarea')
     var sendBtn = $('.send')
     var teaser = $('.teaser')
-    var errBar = $('.err-bar')
-    var statusDot = $('.dot')
-    var subtitle = $('.head .s')
+    var errBar = $('.err')
+    var fileInput = $('.file')
+    var honeypot = $('.hp')
 
-    $('.head .t').textContent = cfg.title
-    subtitle.textContent = cfg.subtitle
-    if (cfg.avatar) {
-        $('.avatar').style.backgroundImage = 'url("' + cfg.avatar.replace(/"/g, '%22') + '")'
-    } else {
-        $('.ini').textContent = cfg.title.replace(/^chat with /i, '').charAt(0).toUpperCase() || 'E'
-    }
-    $('.tt').textContent = cfg.greeting
+    root.querySelectorAll('.av img').forEach(function (img) {
+        img.src = cfg.photo
+        img.alt = cfg.name
+    })
+    root.querySelectorAll('.who .n').forEach(function (el) {
+        el.textContent = cfg.name
+    })
+    root.querySelectorAll('.who .r').forEach(function (el) {
+        el.textContent = cfg.role
+    })
+    $('.ttext').textContent = cfg.teaser
+    panel.setAttribute('aria-label', 'Chat with ' + cfg.name)
 
     // ------------------------------------------------------------ helpers
 
@@ -193,27 +297,50 @@
 
     function fmtTime(ts) {
         var d = new Date(ts)
-        var today = new Date()
         var t = d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
-        return d.toDateString() === today.toDateString() ? t : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + t
+        return d.toDateString() === new Date().toDateString() ? 'Today ' + t : d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ', ' + t
     }
 
-    var lastTs = 0
-    function addBubble(sender, text, ts, opts) {
-        opts = opts || {}
-        if (ts && ts - lastTs > 15 * 60 * 1000) {
-            var t = document.createElement('div')
-            t.className = 'time'
-            t.textContent = fmtTime(ts)
-            msgs.insertBefore(t, typingEl)
-        }
-        if (ts) lastTs = ts
-        var el = document.createElement('div')
-        el.className = 'm ' + (sender === 'visitor' ? 'visitor' : 'admin') + (opts.pending ? ' pending' : '')
-        renderText(el, text)
+    function insert(el) {
         msgs.insertBefore(el, typingEl)
         scrollDown()
         return el
+    }
+
+    var lastTs = 0
+    function addBubble(m, opts) {
+        opts = opts || {}
+        if (m.created_at && m.created_at - lastTs > 15 * 60 * 1000) {
+            var t = document.createElement('div')
+            t.className = 'stamp'
+            t.textContent = fmtTime(m.created_at)
+            insert(t)
+        }
+        if (m.created_at) lastTs = m.created_at
+        var el = document.createElement('div')
+        el.className = 'm ' + (m.sender === 'visitor' ? 'visitor' : 'admin') + (opts.pending ? ' pending' : '')
+        if (m.attachment) {
+            var a = document.createElement('a')
+            a.href = m.attachment.url
+            a.target = '_blank'
+            a.rel = 'noopener noreferrer'
+            if (/^image\//.test(m.attachment.type)) {
+                var img = document.createElement('img')
+                img.src = m.attachment.url
+                img.alt = m.attachment.name
+                img.loading = 'lazy'
+                img.onload = scrollDown
+                a.appendChild(img)
+            } else {
+                a.className = 'filechip'
+                a.innerHTML = ICON.file
+                a.appendChild(document.createTextNode(m.attachment.name))
+            }
+            el.appendChild(a)
+            if (m.body) el.appendChild(document.createElement('br'))
+        }
+        if (m.body) renderText(el, m.body)
+        return insert(el)
     }
 
     function scrollDown() {
@@ -235,6 +362,9 @@
     function isOpen() {
         return panel.classList.contains('open')
     }
+    var isPhone = function () {
+        return window.matchMedia('(max-width: 480px)').matches
+    }
 
     // A short chime for incoming replies (no audio file needed).
     function chime() {
@@ -243,7 +373,6 @@
             var ctx = new Ctx()
             var o = ctx.createOscillator()
             var g = ctx.createGain()
-            o.type = 'sine'
             o.frequency.setValueAtTime(880, ctx.currentTime)
             o.frequency.setValueAtTime(1175, ctx.currentTime + 0.09)
             g.gain.setValueAtTime(0.0001, ctx.currentTime)
@@ -262,7 +391,7 @@
         if (titleTimer || !document.hidden) return
         var on = false
         titleTimer = setInterval(function () {
-            document.title = (on = !on) ? '💬 New message from Evan' : originalTitle
+            document.title = (on = !on) ? 'New message from ' + firstName : originalTitle
         }, 1200)
     }
     function stopFlash() {
@@ -275,162 +404,319 @@
         if (!document.hidden) stopFlash()
     })
 
+    // ------------------------------------------------------------ teaser + reviews badge
+
+    var hiddenForTeaser = []
+    function hideBadgeForTeaser() {
+        if (!isPhone() || !cfg.hideOnTeaser) return
+        try {
+            document.querySelectorAll(cfg.hideOnTeaser).forEach(function (el) {
+                // Only floating elements, never page content that happens to match.
+                if (host.contains(el) || getComputedStyle(el).position !== 'fixed') return
+                hiddenForTeaser.push({ el: el, v: el.style.visibility, o: el.style.opacity, t: el.style.transition })
+                el.style.transition = 'opacity .2s'
+                el.style.opacity = '0'
+                el.style.visibility = 'hidden'
+            })
+        } catch (e) {}
+    }
+    function restoreBadge() {
+        hiddenForTeaser.forEach(function (h) {
+            h.el.style.visibility = h.v
+            h.el.style.opacity = h.o
+            setTimeout(function () {
+                h.el.style.transition = h.t
+            }, 250)
+        })
+        hiddenForTeaser = []
+    }
+    function showTeaser() {
+        if (isOpen() || getStore(TEASED_KEY, sessionStorage)) return
+        setStore(TEASED_KEY, true, sessionStorage)
+        hideBadgeForTeaser()
+        teaser.classList.add('show')
+        track('dmg_chat_teaser_shown')
+    }
+    function hideTeaser() {
+        if (!teaser.classList.contains('show')) return
+        teaser.classList.remove('show')
+        restoreBadge()
+    }
+    function teaserAllowedHere() {
+        var p = location.pathname.replace(/\/$/, '')
+        return cfg.teaserDelay > 0 && !cfg.teaserExclude.some(function (x) {
+            return p === x || p.indexOf(x + '/') === 0
+        })
+    }
+
     // ------------------------------------------------------------ state
 
     var socket = null
+    var session = getStore(STORE_KEY) || {}
     var contact = {}
     var hasMessages = false
-    var contactCardShown = false
-    var greetingShown = false
+    var contactAsked = false
 
-    function showGreeting() {
-        if (greetingShown) return
-        greetingShown = true
-        addBubble('admin', cfg.greeting)
+    function renderIntro() {
+        var g = document.createElement('div')
+        g.className = 'm admin'
+        g.textContent = cfg.greeting
+        insert(g)
+        var actions = document.createElement('div')
+        actions.className = 'actions'
+        actions.innerHTML =
+            '<a class="act primary book" target="_blank" rel="noopener">' + ICON.cal + 'Book a Discovery Call</a>' +
+            '<button type="button" class="act emailbtn">' + ICON.mail + 'Send an Email</button>'
+        var book = actions.querySelector('.book')
+        book.href = cfg.bookingUrl
+        book.addEventListener('click', function () {
+            track('dmg_chat_book_call_click')
+        })
+        actions.querySelector('.emailbtn').addEventListener('click', function () {
+            track('dmg_chat_email_click')
+            showEmailForm()
+        })
+        insert(actions)
     }
 
-    function maybeAskContact() {
-        if (contactCardShown || contact.email) return
-        contactCardShown = true
+    function cardError(card, text) {
+        var e = card.querySelector('.cerr')
+        e.textContent = text
+        e.style.display = text ? 'block' : 'none'
+    }
+
+    function saveContact(name, email, done) {
+        withSocket(function () {
+            socket.emit('contact', { name: name, email: email, hp: honeypot.value }, function (res) {
+                if (res && res.error) return done(res.error)
+                contact = { name: name || contact.name, email: email || contact.email }
+                if (email) track('dmg_chat_email_captured')
+                done()
+            })
+        })
+    }
+
+    // Asked after the first message, and again after the auto-reply if we still have no email.
+    function askContact(text) {
+        if (contact.email || root.querySelector('.card.contact')) return
+        contactAsked = true
         var card = document.createElement('div')
-        card.className = 'card'
+        card.className = 'card contact'
         card.innerHTML =
-            '<p>Thanks! I\'ll reply here in a moment. In case you step away, where can I follow up?</p>' +
-            '<div class="err"></div>' +
-            '<input class="n" type="text" placeholder="Your name" autocomplete="name" maxlength="100">' +
-            '<input class="e" type="email" placeholder="Email address" autocomplete="email" maxlength="200">' +
-            '<div class="row"><button type="button" class="skip">Skip</button><button type="button" class="save">Save</button></div>'
-        msgs.insertBefore(card, typingEl)
-        scrollDown()
-        var err = card.querySelector('.err')
+            '<p></p><div class="cerr" role="alert"></div>' +
+            '<label>Name<input class="n" type="text" autocomplete="name" maxlength="100"></label>' +
+            '<label>Email<input class="e" type="email" autocomplete="email" placeholder="you@company.com" maxlength="200"></label>' +
+            '<div class="note">You&#39;ll also get occasional updates from Dorian Media. Unsubscribe anytime.</div>' +
+            '<div class="row"><button type="button" class="btn ghost skip">Skip</button><button type="button" class="btn main save">Save</button></div>'
+        card.querySelector('p').textContent = text || 'Thanks! In case you step away, where can I follow up with you?'
+        if (contact.name) card.querySelector('.n').value = contact.name
+        insert(card)
         card.querySelector('.skip').onclick = function () {
             card.remove()
         }
         card.querySelector('.save').onclick = function () {
             var name = card.querySelector('.n').value.trim()
             var email = card.querySelector('.e').value.trim()
-            if (!name && !email) return card.remove()
-            socket.emit('contact', { name: name, email: email }, function (res) {
-                if (res && res.error) {
-                    err.textContent = res.error
-                    err.style.display = 'block'
-                    return
-                }
-                contact = { name: name || contact.name, email: email || contact.email }
-                card.innerHTML = '<p>Got it' + (name ? ', ' : '') + '<span class="nm"></span>! I\'ll be in touch.</p>'
-                card.querySelector('.nm').textContent = name
+            if (!email) return cardError(card, 'Please add your email so ' + firstName + ' can reply.')
+            saveContact(name, email, function (err) {
+                if (err) return cardError(card, err)
+                card.innerHTML = '<p></p>'
+                card.querySelector('p').textContent =
+                    'Got it' + (name ? ', ' + name.split(' ')[0] : '') + '! If you leave, ' + firstName + "'s reply will go to " + email + '.'
             })
         }
     }
 
-    function setAdminOnline(on) {
-        statusDot.classList.toggle('on', on)
-        subtitle.textContent = on ? 'Online now' : 'Usually replies within minutes'
+    // "Send an Email": a short form right in the chat. It becomes a normal chat
+    // message, and the reply is emailed if they've left.
+    function showEmailForm() {
+        if (root.querySelector('.card.emailform')) return root.querySelector('.card.emailform input').focus()
+        var card = document.createElement('div')
+        card.className = 'card emailform'
+        card.innerHTML =
+            '<p>Leave your details and message, and ' + firstName + ' will reply by email.</p><div class="cerr" role="alert"></div>' +
+            '<label>Name<input class="n" type="text" autocomplete="name" maxlength="100"></label>' +
+            '<label>Email<input class="e" type="email" autocomplete="email" placeholder="you@company.com" maxlength="200"></label>' +
+            '<label>Message<textarea class="b" maxlength="2000"></textarea></label>' +
+            '<div class="note">You&#39;ll also get occasional updates from Dorian Media. Unsubscribe anytime.</div>' +
+            '<div class="row"><button type="button" class="btn ghost skip">Cancel</button><button type="button" class="btn main save">Send</button></div>'
+        if (contact.name) card.querySelector('.n').value = contact.name
+        if (contact.email) card.querySelector('.e').value = contact.email
+        insert(card)
+        card.querySelector('.n').focus()
+        card.querySelector('.skip').onclick = function () {
+            card.remove()
+        }
+        card.querySelector('.save').onclick = function () {
+            var name = card.querySelector('.n').value.trim()
+            var email = card.querySelector('.e').value.trim()
+            var body = card.querySelector('.b').value.trim()
+            if (!email || !body) return cardError(card, 'Please add your email and a message.')
+            saveContact(name, email, function (err) {
+                if (err) return cardError(card, err)
+                card.remove()
+                sendMessage(body)
+            })
+        }
+    }
+
+    function withSocket(cb) {
+        if (socket && socket.connected) return cb()
+        connect()
+        var tries = 0
+        ;(function wait() {
+            if (socket && socket.connected) return cb()
+            if (++tries > 100) return showError('Could not connect. Please try again.')
+            setTimeout(wait, 100)
+        })()
     }
 
     function connect() {
         if (socket) return
+        socket = { connected: false, emit: function () {} } // placeholder while socket.io loads
         loadSocketIo(function (io) {
             socket = io(BASE + '/visitor', {
                 auth: function (cb) {
-                    var s = storage.get(STORE_KEY) || {}
+                    var s = getStore(STORE_KEY) || {}
                     cb({ visitorId: s.visitorId, token: s.token, pageUrl: location.href, referrer: document.referrer })
                 },
                 transports: ['websocket', 'polling']
             })
-
             socket.on('connect_error', function () {
                 showError('Reconnecting…')
             })
             socket.on('connect', function () {
                 showError('')
             })
-
             socket.on('session', function (data) {
-                storage.set(STORE_KEY, { visitorId: data.visitorId, token: data.token })
+                session = { visitorId: data.visitorId, token: data.token }
+                setStore(STORE_KEY, session)
                 contact = data.contact || {}
-                setAdminOnline(data.adminOnline)
-                // Rebuild history (also runs after reconnects).
-                Array.prototype.slice.call(msgs.querySelectorAll('.m,.time,.card')).forEach(function (n) {
+                Array.prototype.slice.call(msgs.querySelectorAll('.m,.stamp,.card,.actions')).forEach(function (n) {
                     n.remove()
                 })
-                greetingShown = false
-                contactCardShown = false
                 lastTs = 0
-                showGreeting()
+                renderIntro()
                 hasMessages = data.messages.length > 0
                 data.messages.forEach(function (m) {
-                    addBubble(m.sender, m.body, m.created_at)
+                    addBubble(m)
                 })
+                if (hasMessages) contactAsked = true // don't nag returning visitors
                 if (isOpen()) {
                     socket.emit('read')
                     setUnread(0)
                 } else {
                     setUnread(data.unread || 0)
                 }
-                if (hasMessages && !contact.email) contactCardShown = true // don't nag returning visitors
             })
-
             socket.on('message', function (m) {
-                addBubble(m.sender, m.body, m.created_at)
-                if (m.sender === 'admin') {
-                    typingEl.style.display = 'none'
-                    if (isOpen() && !document.hidden) {
-                        socket.emit('read')
-                    } else {
-                        setUnread(unread + 1)
-                        chime()
-                        flashTitle()
-                    }
+                addBubble(m)
+                if (m.sender !== 'admin') return
+                typingEl.style.display = 'none'
+                if (isOpen() && !document.hidden) socket.emit('read')
+                else {
+                    setUnread(unread + 1)
+                    chime()
+                    flashTitle()
                 }
+                if (m.auto && !contact.email) askContact("Leave your email and I'll follow up there if you need to go.")
             })
-
             socket.on('admin_typing', function (on) {
                 typingEl.style.display = on ? 'block' : 'none'
                 if (on) scrollDown()
             })
-
-            socket.on('admin_status', function (d) {
-                setAdminOnline(d.online)
-            })
         })
     }
 
-    // ------------------------------------------------------------ events
+    // ------------------------------------------------------------ open / close
 
-    function open() {
+    function open(source) {
+        hideTeaser()
         panel.classList.add('open')
-        teaser.style.display = 'none'
-        storage.set(OPEN_KEY, true, sessionStorage)
-        storage.set('dmg_chat_teased', true, sessionStorage)
+        launcher.classList.add('open')
+        launcher.setAttribute('aria-label', 'Close chat')
+        if (isPhone()) {
+            backdrop.classList.add('open')
+            document.documentElement.style.overflow = 'hidden'
+        }
+        setStore(OPEN_KEY, true, sessionStorage)
+        setStore(TEASED_KEY, true, sessionStorage)
         setUnread(0)
         stopFlash()
-        connect()
-        if (socket && socket.connected) socket.emit('read')
-        showGreeting()
+        track('dmg_chat_open', { chat_open_source: source || 'button' })
+        if (!socket) {
+            renderIntroOnce()
+            connect()
+        } else if (socket.connected) socket.emit('read')
         setTimeout(function () {
-            if (window.innerWidth > 480) input.focus()
+            if (!isPhone()) input.focus()
             scrollDown()
         }, 50)
     }
 
+    var introShown = false
+    function renderIntroOnce() {
+        if (introShown || msgs.querySelector('.actions')) return
+        introShown = true
+        renderIntro()
+    }
+
     function close() {
-        panel.classList.remove('open')
-        storage.set(OPEN_KEY, false, sessionStorage)
+        panel.classList.remove('open', 'full')
+        panel.style.transform = ''
+        launcher.classList.remove('open')
+        launcher.setAttribute('aria-label', 'Open chat with ' + firstName)
+        backdrop.classList.remove('open')
+        document.documentElement.style.overflow = ''
+        setStore(OPEN_KEY, false, sessionStorage)
     }
 
     launcher.addEventListener('click', function () {
-        isOpen() ? close() : open()
+        isOpen() ? close() : open('button')
     })
-    $('.head .close').addEventListener('click', close)
-    teaser.addEventListener('click', function (e) {
-        if (e.target.classList.contains('x')) {
-            teaser.style.display = 'none'
-            storage.set('dmg_chat_teased', true, sessionStorage)
-            return
-        }
-        open()
+    backdrop.addEventListener('click', close)
+    $('.min').addEventListener('click', close)
+    $('.tclose').addEventListener('click', function () {
+        hideTeaser()
+        track('dmg_chat_teaser_dismissed')
     })
+    $('.ttext').addEventListener('click', function () {
+        open('teaser')
+    })
+
+    // Phones: swipe the sheet down to close; grow to full height while typing.
+    var dragY = null
+    function dragStart(e) {
+        if (!isPhone()) return
+        dragY = e.touches[0].clientY
+    }
+    function dragMove(e) {
+        if (dragY === null) return
+        var dy = Math.max(0, e.touches[0].clientY - dragY)
+        panel.style.transform = 'translateY(' + dy + 'px)'
+    }
+    function dragEnd(e) {
+        if (dragY === null) return
+        var dy = e.changedTouches[0].clientY - dragY
+        dragY = null
+        panel.style.transform = ''
+        if (dy > 90) close()
+    }
+    ;[$('.handle'), $('.head')].forEach(function (el) {
+        el.addEventListener('touchstart', dragStart, { passive: true })
+        el.addEventListener('touchmove', dragMove, { passive: true })
+        el.addEventListener('touchend', dragEnd)
+    })
+    input.addEventListener('focus', function () {
+        if (isPhone()) panel.classList.add('full')
+    })
+    input.addEventListener('blur', function () {
+        setTimeout(function () {
+            if (root.activeElement !== input) panel.classList.remove('full')
+        }, 150)
+    })
+
+    // ------------------------------------------------------------ composing
 
     input.addEventListener('input', function () {
         input.style.height = 'auto'
@@ -439,67 +725,130 @@
         notifyTyping()
     })
     input.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing) {
+        if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && !isPhone()) {
             e.preventDefault()
-            form.requestSubmit ? form.requestSubmit() : submit(e)
+            submit(e)
         }
     })
 
     var typingTimer = null
     var typingSent = false
     function notifyTyping() {
-        if (!socket) return
+        if (!socket || !socket.connected) return
         if (!typingSent) {
             typingSent = true
             socket.emit('typing', true)
         }
         clearTimeout(typingTimer)
-        typingTimer = setTimeout(function () {
-            typingSent = false
-            socket.emit('typing', false)
-        }, 2500)
+        typingTimer = setTimeout(stopTyping, 2500)
+    }
+    function stopTyping() {
+        clearTimeout(typingTimer)
+        if (typingSent && socket && socket.connected) socket.emit('typing', false)
+        typingSent = false
+    }
+
+    function sendMessage(body, attachment) {
+        var bubble = addBubble({ sender: 'visitor', body: body, attachment: attachment, created_at: Date.now() }, { pending: true })
+        withSocket(function () {
+            socket.timeout(10000).emit(
+                'message',
+                { body: body, attachmentId: attachment && attachment.id, pageUrl: location.href, hp: honeypot.value },
+                function (err, res) {
+                    if (err || (res && res.error)) {
+                        showError((res && res.error) || 'Message not sent. Check your connection and try again.')
+                        return
+                    }
+                    bubble.classList.remove('pending')
+                    showError('')
+                    track('dmg_chat_message_sent', { chat_first_message: !hasMessages })
+                    var first = !hasMessages
+                    hasMessages = true
+                    if (first && !contactAsked) askContact()
+                }
+            )
+        })
     }
 
     function submit(e) {
         e.preventDefault()
         var body = input.value.trim()
-        if (!body || !socket) return
+        if (!body) return
         input.value = ''
         input.style.height = 'auto'
         sendBtn.disabled = true
-        clearTimeout(typingTimer)
-        typingSent = false
-        socket.emit('typing', false)
-        var bubble = addBubble('visitor', body, Date.now(), { pending: true })
-        socket.timeout(10000).emit('message', { body: body, pageUrl: location.href }, function (err, res) {
-            if (err || (res && res.error)) {
-                bubble.classList.add('pending')
-                showError((res && res.error) || 'Message not sent. Check your connection and try again.')
-                return
-            }
-            bubble.classList.remove('pending')
-            showError('')
-            hasMessages = true
-            maybeAskContact()
-        })
+        stopTyping()
+        sendMessage(body)
     }
     form.addEventListener('submit', submit)
+
+    // 11. Photo / PDF sharing.
+    $('.attach').addEventListener('click', function () {
+        fileInput.click()
+    })
+    fileInput.addEventListener('change', function () {
+        var file = fileInput.files && fileInput.files[0]
+        fileInput.value = ''
+        if (!file) return
+        if (file.size > 10 * 1024 * 1024) return showError('Files can be up to 10 MB.')
+        showError('Uploading ' + file.name + '…')
+        withSocket(function () {
+            var s = getStore(STORE_KEY) || {}
+            fetch(BASE + '/api/upload', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': file.type || 'application/octet-stream',
+                    'X-Visitor-Id': s.visitorId,
+                    'X-Visitor-Token': s.token,
+                    'X-File-Name': encodeURIComponent(file.name)
+                },
+                body: file
+            })
+                .then(function (r) {
+                    return r.json().then(function (j) {
+                        if (!r.ok) throw new Error(j.error || 'Upload failed')
+                        return j
+                    })
+                })
+                .then(function (up) {
+                    showError('')
+                    sendMessage('', up)
+                    track('dmg_chat_file_sent')
+                })
+                .catch(function (err) {
+                    showError(err.message || 'Upload failed')
+                })
+        })
+    })
 
     // ------------------------------------------------------------ boot
 
     function boot() {
         document.body.appendChild(host)
-        var session = storage.get(STORE_KEY)
-        // Returning visitors connect right away so they see replies and unread badges.
-        if (session && session.visitorId) connect()
-        if (storage.get(OPEN_KEY, sessionStorage)) open()
-        else if (!storage.get('dmg_chat_teased', sessionStorage)) {
-            setTimeout(function () {
-                if (!isOpen()) teaser.style.display = 'block'
-            }, 8000)
+
+        // Link from a follow-up email: "#dmgchat=<id>.<token>" restores the conversation.
+        var m = location.hash.match(/dmgchat=([0-9a-f-]{36})\.([\w-]+)/)
+        if (m) {
+            setStore(STORE_KEY, { visitorId: m[1], token: m[2] })
+            try {
+                history.replaceState(null, '', location.pathname + location.search)
+            } catch (e) {}
+            return open('email_link')
+        }
+        if (getStore(OPEN_KEY, sessionStorage) && !isPhone()) return open('restore')
+        // Returning visitors connect quietly so they see replies and unread badges.
+        if (session.visitorId) connect()
+        if (teaserAllowedHere() && !session.visitorId) {
+            setTimeout(showTeaser, cfg.teaserDelay * 1000)
         }
     }
 
-    if (document.body) boot()
-    else document.addEventListener('DOMContentLoaded', boot)
+    // 5. Keep the site fast: wait until the page has finished loading and the browser is idle.
+    function whenIdle() {
+        ;(window.requestIdleCallback || function (fn) {
+            setTimeout(fn, 1)
+        })(boot, { timeout: 3000 })
+    }
+    if (document.readyState === 'complete') whenIdle()
+    else window.addEventListener('load', whenIdle)
 })()

@@ -65,6 +65,7 @@
                             <div id="t-meta" class="meta"></div>
                         </div>
                         <button id="t-status" class="pill-btn"></button>
+                        <button id="t-block" class="pill-btn" title="Block this visitor (spam)">Block</button>
                         <button id="t-delete" class="icon-btn danger" aria-label="Delete conversation">
                             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                                 <path d="M3 6h18M8 6V4a2 2 0 012-2h4a2 2 0 012 2v2m3 0v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6" />
@@ -72,12 +73,25 @@
                         </button>
                     </header>
                     <div id="t-info" class="info"></div>
+                    <div id="t-ml" class="ml" hidden></div>
                     <div id="messages"></div>
                     <div id="v-typing" class="typing" hidden>typing…</div>
                     <div id="quick" class="quick"></div>
                     <form id="composer">
+                        <input type="file" id="file" accept="image/*,application/pdf" hidden />
+                        <button type="button" id="attach" class="tool" aria-label="Attach a photo or PDF">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M21 11.5l-8.6 8.6a5.5 5.5 0 01-7.8-7.8l8.6-8.6a3.7 3.7 0 015.2 5.2l-8.6 8.6a1.8 1.8 0 01-2.6-2.6l8-8" />
+                            </svg>
+                        </button>
                         <textarea id="reply" rows="1" placeholder="Reply…" aria-label="Reply"></textarea>
-                        <button type="submit" aria-label="Send">
+                        <button type="button" id="suggest" class="tool" aria-label="Suggest a reply with AI" title="Suggest a reply" hidden>
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                                <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z" />
+                                <path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" />
+                            </svg>
+                        </button>
+                        <button type="submit" id="send" aria-label="Send">
                             <svg viewBox="0 0 24 24" fill="currentColor">
                                 <path
                                     d="M3.4 20.4l17.45-7.48a1 1 0 000-1.84L3.4 3.6a.99.99 0 00-1.39.91L2 9.12c0 .5.37.93.87.99L17 12 2.87 13.88c-.5.07-.87.5-.87 1l.01 4.61c0 .71.73 1.2 1.39.91z"

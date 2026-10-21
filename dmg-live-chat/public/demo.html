@@ -5,14 +5,17 @@
         <meta name="viewport" content="width=device-width, initial-scale=1" />
         <title>Live chat demo</title>
         <style>
-            body { font-family: system-ui, sans-serif; max-width: 680px; margin: 60px auto; padding: 0 20px; line-height: 1.6; color: #0f172a; }
-            code { background: #f1f5f9; padding: 2px 6px; border-radius: 4px; }
+            body { font-family: Arial, sans-serif; max-width: 680px; margin: 60px auto; padding: 0 20px; line-height: 1.6; color: #ebeced; background: #0e1015; }
+            a { color: #28b0ff; }
+            .fake-reviews { position: fixed; left: 16px; bottom: 20px; background: #fff; color: #0e1015; border-radius: 14px; padding: 12px 14px; width: 230px; font-size: 13px; box-shadow: 0 8px 30px rgba(0,0,0,.35); }
         </style>
     </head>
     <body>
         <h1>Live chat test page</h1>
-        <p>This page stands in for your website. Click the chat bubble in the bottom-right corner and send a message.</p>
+        <p>This page stands in for your website. Click the chat button in the bottom-right corner and send a message.</p>
         <p>Then open <a href="/admin/" target="_blank">/admin/</a> (or the app on your phone) to reply.</p>
-        <script src="/widget.js" defer></script>
+        <!-- Stand-in for the Google reviews badge, to test that it hides behind the teaser on phones -->
+        <div class="fake-reviews dmg-google-reviews-badge"><strong>5.0 ★★★★★</strong> Google reviews<br />"Evan and his team were amazing."</div>
+        <script src="/widget.js" data-teaser-delay="2" defer></script>
     </body>
 </html>

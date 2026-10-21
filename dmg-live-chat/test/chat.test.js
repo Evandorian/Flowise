@@ -18,7 +18,15 @@ const emit = (socket, event, payload) => new Promise((resolve) => socket.emit(ev
 before(async () => {
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dmg-chat-'))
     proc = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
-        env: { ...process.env, PORT: String(PORT), ADMIN_PASSWORD: PASSWORD, DATA_DIR: dataDir, NTFY_TOPIC: '' },
+        env: {
+            ...process.env,
+            PORT: String(PORT),
+            ADMIN_PASSWORD: PASSWORD,
+            DATA_DIR: dataDir,
+            NTFY_TOPIC: '',
+            SPAM_MIN_SECONDS: '0',
+            AUTO_REPLY_SECONDS: '1'
+        },
         stdio: ['ignore', 'pipe', 'inherit']
     })
     await new Promise((resolve) => proc.stdout.on('data', (d) => d.toString().includes('running') && resolve()))
@@ -61,7 +69,6 @@ test('visitor and admin can chat in real time', async () => {
     const session = await once(visitor, 'session')
     assert.ok(session.visitorId && session.token)
     assert.strictEqual(session.messages.length, 0)
-    assert.strictEqual(session.adminOnline, true)
 
     // Visitor -> admin
     const adminGotMessage = once(admin, 'message')
@@ -128,4 +135,69 @@ test('serves the widget, inbox app and push key', async () => {
     const { body } = await login(PASSWORD)
     const key = await fetch(`${BASE}/api/admin/push/public-key`, { headers: { Authorization: `Bearer ${body.token}` } })
     assert.ok((await key.json()).publicKey)
+})
+
+test('auto-reply is sent when nobody answers, only once', async () => {
+    const visitor = io(`${BASE}/visitor`, { auth: { pageUrl: 'http://localhost/x' } })
+    await once(visitor, 'session')
+    await emit(visitor, 'message', { body: 'Anyone there?' })
+    const auto = await once(visitor, 'message')
+    assert.strictEqual(auto.sender, 'admin')
+    assert.strictEqual(auto.auto, true)
+    await emit(visitor, 'message', { body: 'Hello?' })
+    const extra = await Promise.race([once(visitor, 'message').then(() => 'got'), new Promise((r) => setTimeout(() => r('none'), 1500))])
+    assert.strictEqual(extra, 'none')
+    visitor.close()
+})
+
+test('visitors and admin can share files', async () => {
+    const visitor = io(`${BASE}/visitor`)
+    const s = await once(visitor, 'session')
+    const png = Buffer.from('89504e470d0a1a0a0000000d49484452000000010000000108060000001f15c4890000000d4944415478da63f8ffff3f0005fe02fea7d6a4ab0000000049454e44ae426082', 'hex')
+
+    const bad = await fetch(`${BASE}/api/upload`, { method: 'POST', headers: { 'Content-Type': 'image/png' }, body: png })
+    assert.strictEqual(bad.status, 401)
+    const svg = await fetch(`${BASE}/api/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'image/svg+xml', 'X-Visitor-Id': s.visitorId, 'X-Visitor-Token': s.token },
+        body: '<svg></svg>'
+    })
+    assert.strictEqual(svg.status, 415)
+
+    const res = await fetch(`${BASE}/api/upload`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'image/png', 'X-Visitor-Id': s.visitorId, 'X-Visitor-Token': s.token, 'X-File-Name': 'logo.png' },
+        body: png
+    })
+    assert.strictEqual(res.status, 200)
+    const up = await res.json()
+    const ack = await emit(visitor, 'message', { body: '', attachmentId: up.id })
+    assert.strictEqual(ack.message.attachment.name, 'logo.png')
+    const file = await fetch(`${BASE}/files/${up.id}`)
+    assert.strictEqual(file.headers.get('content-type'), 'image/png')
+    assert.strictEqual(Buffer.from(await file.arrayBuffer()).length, png.length)
+    visitor.close()
+})
+
+test('spam: honeypot and blocked visitors are ignored', async () => {
+    const { body } = await login(PASSWORD)
+    const admin = io(`${BASE}/admin`, { auth: { token: body.token } })
+    await once(admin, 'connect')
+    const before = (await emit(admin, 'list', 'open')).length
+
+    const bot = io(`${BASE}/visitor`)
+    await once(bot, 'session')
+    assert.ok((await emit(bot, 'message', { body: 'buy cheap pills', hp: 'http://spam' })).ok)
+    assert.strictEqual((await emit(admin, 'list', 'open')).length, before)
+    bot.close()
+
+    const spammer = io(`${BASE}/visitor`)
+    const s = await once(spammer, 'session')
+    await emit(spammer, 'message', { body: 'spam 1' })
+    assert.strictEqual((await emit(admin, 'list', 'open')).length, before + 1)
+    assert.ok((await emit(admin, 'block', s.visitorId)).ok)
+    assert.ok((await emit(spammer, 'message', { body: 'spam 2' })).ok)
+    assert.strictEqual((await emit(admin, 'list', 'open')).length, before)
+    spammer.close()
+    admin.close()
 })

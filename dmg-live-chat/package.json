@@ -13,8 +13,10 @@
         "node": ">=20"
     },
     "dependencies": {
+        "@anthropic-ai/sdk": "^0.137.0",
         "better-sqlite3": "^12.4.1",
         "express": "^5.2.1",
+        "nodemailer": "^10.1.7",
         "socket.io": "^4.8.1",
         "web-push": "^3.6.7"
     },

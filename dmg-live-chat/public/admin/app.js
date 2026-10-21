@@ -5,7 +5,7 @@
     const DEFAULT_QUICK = [
         "Hey! Thanks for reaching out, I'm here. What can I help with?",
         "Great question. What's the best email to send details to?",
-        'Want to hop on a quick call? Grab a time here: ',
+        'Want to hop on a quick call? Grab a time here: https://dorianmediagroup.com/book-a-discovery-call/',
         "I'm stepping away for a bit but will get back to you shortly!"
     ].join('\n')
 
@@ -166,7 +166,7 @@
                 li.querySelector('.li-name').append(pill)
             }
             li.querySelector('.li-time').textContent = relTime(c.last_message_at)
-            li.querySelector('.li-last').textContent = c.last_message || ''
+            li.querySelector('.li-last').textContent = (c.last_sender === 'admin' ? 'You: ' : '') + (c.last_message || '')
             li.addEventListener('click', () => openConversation(c.id))
             list.append(li)
         }
@@ -204,7 +204,29 @@
         const el = document.createElement('div')
         el.className = 'msg ' + (m.sender === 'admin' ? 'admin' : 'visitor')
         el.title = fullTime(m.created_at)
-        renderText(el, m.body)
+        if (m.attachment) {
+            const a = document.createElement('a')
+            a.href = m.attachment.url
+            a.target = '_blank'
+            a.rel = 'noopener noreferrer'
+            if (/^image\//.test(m.attachment.type)) {
+                const img = document.createElement('img')
+                img.src = m.attachment.url
+                img.alt = m.attachment.name
+                img.onload = () => (box.scrollTop = box.scrollHeight)
+                a.append(img)
+            } else {
+                a.textContent = 'File: ' + m.attachment.name
+            }
+            el.append(a)
+        }
+        if (m.body) renderText(el, m.body)
+        if (m.auto) {
+            const tag = document.createElement('span')
+            tag.className = 'auto'
+            tag.textContent = 'Sent automatically'
+            el.append(tag)
+        }
         box.append(el)
         box.scrollTop = box.scrollHeight
     }
@@ -236,6 +258,11 @@
             info.append(p)
         })
         info.hidden = parts.length === 0
+        const ml = $('t-ml')
+        ml.hidden = !c.mailerlite_status
+        ml.className = 'ml ' + (c.mailerlite_status === 'added' ? 'ok' : 'bad')
+        ml.textContent =
+            c.mailerlite_status === 'added' ? '✓ Added to MailerLite: Website Chat Leads' : 'Could not add to MailerLite. Check the API key in your server settings.'
     }
 
     function openConversation(id, { fromHash = false } = {}) {
@@ -285,6 +312,64 @@
     $('t-delete').addEventListener('click', () => {
         if (!state.currentId || !confirm('Delete this conversation permanently?')) return
         state.socket.emit('delete', state.currentId, () => {})
+    })
+
+    $('t-block').addEventListener('click', () => {
+        if (!state.currentId || !confirm('Block this visitor? Their messages will be ignored and this chat will be deleted.')) return
+        state.socket.emit('block', state.currentId, () => {})
+    })
+
+    // ---------------------------------------------------------------- attachments
+
+    $('attach').addEventListener('click', () => $('file').click())
+    $('file').addEventListener('change', async () => {
+        const file = $('file').files[0]
+        $('file').value = ''
+        if (!file || !state.currentId) return
+        if (file.size > 10 * 1024 * 1024) return alert('Files can be up to 10 MB.')
+        const conversationId = state.currentId
+        $('attach').disabled = true
+        try {
+            const res = await fetch('/api/upload', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': file.type || 'application/octet-stream',
+                    Authorization: 'Bearer ' + state.token,
+                    'X-Conversation-Id': conversationId,
+                    'X-File-Name': encodeURIComponent(file.name)
+                },
+                body: file
+            })
+            const up = await res.json()
+            if (!res.ok) throw new Error(up.error || 'Upload failed')
+            state.socket.emit('send', { conversationId, body: '', attachmentId: up.id }, () => {})
+        } catch (err) {
+            alert(err.message)
+        } finally {
+            $('attach').disabled = false
+        }
+    })
+
+    // ---------------------------------------------------------------- AI suggestions
+
+    $('suggest').addEventListener('click', async () => {
+        if (!state.currentId) return
+        const btn = $('suggest')
+        btn.disabled = true
+        const before = reply.placeholder
+        reply.placeholder = 'Writing a suggestion…'
+        try {
+            const data = await api('/api/admin/suggest', { conversationId: state.currentId })
+            if (data.error) alert(data.error)
+            else {
+                reply.value = data.text
+                reply.dispatchEvent(new Event('input'))
+                reply.focus()
+            }
+        } finally {
+            btn.disabled = false
+            reply.placeholder = before
+        }
     })
 
     const reply = $('reply')
@@ -507,7 +592,15 @@
         })
     }
 
+    async function loadConfig() {
+        try {
+            const cfg = await api('/api/admin/config')
+            $('suggest').hidden = !cfg.ai
+        } catch (e) {}
+    }
+
     function start() {
+        loadConfig()
         $('login').hidden = true
         $('app').hidden = false
         renderQuick()
