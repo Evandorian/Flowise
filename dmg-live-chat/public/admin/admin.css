@@ -51,7 +51,12 @@ button {
 }
 
 .screen {
-    height: 100dvh;
+    /* --app-h is the visible height above the iPhone keyboard (set in app.js) */
+    height: var(--app-h, 100dvh);
+}
+html,
+body {
+    overflow: hidden;
 }
 
 /* Login */
@@ -597,4 +602,42 @@ pre {
     .typing-bubble span {
         animation: none;
     }
+}
+
+/* Short chats sit at the bottom, next to the reply box, like iMessage */
+#messages > :first-child {
+    margin-top: auto;
+}
+
+/* AI suggestions, refreshed after each visitor message */
+.quick button.ai {
+    border-color: var(--accent);
+    color: var(--link);
+    background: color-mix(in srgb, var(--accent) 10%, var(--bg));
+    max-width: 270px;
+    white-space: normal;
+    text-align: left;
+    line-height: 1.35;
+    border-radius: 14px;
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    -webkit-box-orient: vertical;
+}
+.quick button.ai.pending {
+    opacity: 0.7;
+    font-style: italic;
+}
+
+/* Visitor location */
+.li-loc {
+    font-size: 12px;
+    color: var(--muted);
+    margin-top: 1px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+.info .where {
+    color: var(--text);
+    font-weight: 600;
 }

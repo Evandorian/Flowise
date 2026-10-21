@@ -603,7 +603,11 @@
             socket = io(BASE + '/visitor', {
                 auth: function (cb) {
                     var s = getStore(STORE_KEY) || {}
-                    cb({ visitorId: s.visitorId, token: s.token, pageUrl: location.href, referrer: document.referrer })
+                    var tz = ''
+                    try {
+                        tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+                    } catch (e) {}
+                    cb({ visitorId: s.visitorId, token: s.token, pageUrl: location.href, referrer: document.referrer, timeZone: tz })
                 },
                 transports: ['websocket', 'polling']
             })

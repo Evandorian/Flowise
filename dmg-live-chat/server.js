@@ -220,7 +220,7 @@ function requireAdmin(req, res, next) {
 }
 
 app.get('/api/admin/config', requireAdmin, (req, res) =>
-    res.json({ ai: integrations.aiEnabled, email: integrations.emailEnabled, mailerlite: integrations.mailerliteEnabled })
+    res.json({ ai: integrations.aiEnabled, autoSuggest: AUTO_SUGGEST, email: integrations.emailEnabled, mailerlite: integrations.mailerliteEnabled })
 )
 
 app.get('/api/admin/push/public-key', requireAdmin, (req, res) => res.json({ publicKey: vapidPublicKey }))
@@ -288,6 +288,49 @@ function publishMessage(message) {
 // --- Follow-up timers ------------------------------------------------------
 // In-memory: a restart drops pending timers, which only means one auto-reply
 // or follow-up email might be skipped.
+
+// --- Visitor location ------------------------------------------------------
+
+async function locateVisitor(id, meta) {
+    const c = store.getConversation(id)
+    if (!c) return
+    if (meta.timezone && meta.timezone !== c.timezone) store.setField(id, 'timezone', meta.timezone)
+    if (c.location && c.location_ip === meta.ip) return
+    const place = meta.headerLocation || (await integrations.lookupLocation(meta.ip))
+    if (!place || !store.getConversation(id)) return
+    store.setField(id, 'location', place)
+    store.setField(id, 'location_ip', meta.ip)
+    admins.emit('conversation_updated', conversationSummary(id))
+}
+
+// --- AI reply suggestions, refreshed after each visitor message ------------
+
+const AUTO_SUGGEST = integrations.aiEnabled && process.env.AI_AUTO_SUGGEST !== 'off'
+const suggestions = new Map() // conversationId -> [option, option]
+
+function setSuggestions(id, options) {
+    if (options.length) suggestions.set(id, options)
+    else if (!suggestions.delete(id)) return
+    admins.emit('suggestions', { conversationId: id, options })
+}
+
+function scheduleSuggestions(id) {
+    if (!AUTO_SUGGEST) return
+    // Short wait so a visitor sending several messages in a row gets one suggestion.
+    schedule(`suggest:${id}`, 1500, async () => {
+        const c = store.getConversation(id)
+        const messages = c ? store.getMessages(id) : []
+        const last = messages[messages.length - 1]
+        if (!last || last.sender !== 'visitor') return
+        const result = await integrations.suggestReply(c, messages)
+        if (!result.options) return
+        // Drop it if you replied (or they wrote again) while it was being written.
+        const latest = store.lastMessageBy(id, 'visitor')
+        const lastAdmin = store.lastMessageBy(id, 'admin')
+        if (!latest || latest.id !== last.id || (lastAdmin && !lastAdmin.auto && lastAdmin.id > last.id)) return
+        setSuggestions(id, result.options)
+    })
+}
 
 const timers = new Map()
 function schedule(key, delay, fn) {
@@ -406,7 +449,9 @@ visitors.on('connection', (socket) => {
         pageUrl: cleanText(auth.pageUrl, 500) || null,
         referrer: cleanText(auth.referrer, 500) || null,
         userAgent: cleanText(socket.handshake.headers['user-agent'], 300),
-        ip: (socket.handshake.headers['x-forwarded-for'] || '').split(',')[0].trim() || socket.handshake.address
+        ip: (socket.handshake.headers['x-forwarded-for'] || '').split(',')[0].trim() || socket.handshake.address,
+        timezone: cleanText(auth.timeZone, 60) || null,
+        headerLocation: integrations.locationFromHeaders(socket.handshake.headers)
     }
     const blocked = () => store.isBlocked(id, meta.ip)
     socket.join(room(id))
@@ -462,6 +507,8 @@ visitors.on('connection', (socket) => {
         }).catch((err) => console.error('[notify]', err))
         scheduleAutoReply(id)
         scheduleAdminAlert(id)
+        scheduleSuggestions(id)
+        locateVisitor(id, meta).catch((err) => console.error('[geo]', err))
     })
 
     socket.on('contact', (payload, ack = () => {}) => {
@@ -510,7 +557,7 @@ admins.on('connection', (socket) => {
         const c = store.getConversation(conversationId)
         if (!c) return ack({ error: 'Not found' })
         store.markAdminRead(conversationId)
-        ack({ conversation: conversationSummary(conversationId), messages: store.getMessages(conversationId) })
+        ack({ conversation: conversationSummary(conversationId), messages: store.getMessages(conversationId), suggestions: suggestions.get(conversationId) || [] })
         admins.emit('conversation_updated', conversationSummary(conversationId))
     })
 
@@ -527,6 +574,8 @@ admins.on('connection', (socket) => {
         store.markAdminRead(conversationId)
         cancel(`auto:${conversationId}`)
         cancel(`alert:${conversationId}`)
+        cancel(`suggest:${conversationId}`)
+        setSuggestions(conversationId, [])
         ack({ ok: true, message })
         publishMessage(message)
         scheduleVisitorEmail(conversationId)
@@ -559,12 +608,14 @@ admins.on('connection', (socket) => {
         store.block('visitor', c.id)
         store.block('ip', c.ip)
         store.deleteConversation(c.id)
+        suggestions.delete(c.id)
         ack({ ok: true })
         admins.emit('conversation_deleted', c.id)
     })
 
     socket.on('delete', (conversationId, ack = () => {}) => {
         store.deleteConversation(conversationId)
+        suggestions.delete(conversationId)
         ack({ ok: true })
         admins.emit('conversation_deleted', conversationId)
     })

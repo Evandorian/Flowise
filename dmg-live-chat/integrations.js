@@ -111,7 +111,7 @@ const SUGGEST_SYSTEM = `You draft live-chat replies for Evan Dorian to send to v
 About the business:
 ${BUSINESS_CONTEXT}
 
-Write the single next message Evan should send, in his voice: warm, confident, concise, first person ("I"), like a text message from the founder. Usually 1-3 short sentences. Answer what the visitor asked, then move the conversation forward with one question or a next step (often booking a discovery call). Never invent prices, timelines, past clients or facts that are not in the business notes; if the visitor asks for something you don't know, say Evan will confirm the details. Do not use emoji or markdown. Output only the message text.`
+Write two different options for the next message Evan should send, in his voice: warm, confident, concise, first person ("I"), like a text message from the founder. Usually 1-3 short sentences. Answer what the visitor asked, then move the conversation forward with one question or a next step (often booking a discovery call). Never invent prices, timelines, past clients or facts that are not in the business notes; if the visitor asks for something you don't know, say Evan will confirm the details. Make the second option take a different angle from the first (for example, one answers in more detail and one moves straight to a call). Do not use emoji or markdown. Output only the two messages, separated by a line containing only ---`
 
 async function suggestReply(conversation, messages) {
     if (!anthropic) return { error: 'AI suggestions are not set up. Add ANTHROPIC_API_KEY to the server settings.' }
@@ -133,7 +133,7 @@ async function suggestReply(conversation, messages) {
             messages: [
                 {
                     role: 'user',
-                    content: `Visitor details:\n${visitor || 'Unknown'}\n\nConversation so far:\n${transcript}\n\nDraft Evan's next message.`
+                    content: `Visitor details:\n${visitor || 'Unknown'}\n\nConversation so far:\n${transcript}\n\nDraft Evan's next message (two options).`
                 }
             ]
         })
@@ -143,7 +143,12 @@ async function suggestReply(conversation, messages) {
             .map((b) => b.text)
             .join('')
             .trim()
-        return text ? { text } : { error: 'No suggestion returned.' }
+        const options = text
+            .split(/^\s*---+\s*$/m)
+            .map((t) => t.trim())
+            .filter(Boolean)
+            .slice(0, 2)
+        return options.length ? { text: options[0], options } : { error: 'No suggestion returned.' }
     } catch (err) {
         if (err instanceof Anthropic.RateLimitError) return { error: 'AI is busy. Try again in a moment.' }
         if (err instanceof Anthropic.AuthenticationError) return { error: 'The ANTHROPIC_API_KEY on the server is invalid.' }
@@ -156,6 +161,66 @@ async function suggestReply(conversation, messages) {
     }
 }
 
+// ---------------------------------------------------------------------------
+// Visitor location (approximate, from their IP address). Uses Cloudflare's
+// location headers when present, otherwise a free lookup service.
+// Set GEO_LOOKUP=off to turn it off.
+// ---------------------------------------------------------------------------
+
+const GEO_ENABLED = process.env.GEO_LOOKUP !== 'off'
+const GEO_URL = process.env.GEO_LOOKUP_URL || 'https://ipwho.is/{ip}'
+const geoCache = new Map()
+
+function isPrivateIp(ip) {
+    return !ip || /^(127\.|10\.|192\.168\.|172\.(1[6-9]|2\d|3[01])\.|169\.254\.|::1$|fc|fd|fe80:|::ffff:127\.)/i.test(ip)
+}
+
+function formatPlace({ city, region, country, countryCode }) {
+    // "Kansas City, Missouri" for the US, "Toronto, Ontario, Canada" elsewhere.
+    const parts = [city, region !== city ? region : null]
+    if (country && countryCode !== 'US') parts.push(country)
+    else if (!city && !region && country) parts.push(country)
+    return parts.filter(Boolean).join(', ') || null
+}
+
+function locationFromHeaders(headers) {
+    const decode = (v) => {
+        try {
+            return v ? decodeURIComponent(String(v)) : null
+        } catch {
+            return String(v)
+        }
+    }
+    const city = decode(headers['cf-ipcity'])
+    const region = decode(headers['cf-region'])
+    const countryCode = headers['cf-ipcountry']
+    if (!city && !region) return null
+    return formatPlace({ city, region, country: countryCode, countryCode })
+}
+
+async function lookupLocation(ip) {
+    if (!GEO_ENABLED || isPrivateIp(ip)) return null
+    if (geoCache.has(ip)) return geoCache.get(ip)
+    try {
+        const res = await fetch(GEO_URL.replace('{ip}', encodeURIComponent(ip)), { signal: AbortSignal.timeout(4000) })
+        if (!res.ok) return null
+        const d = await res.json()
+        if (d.success === false || d.status === 'fail') return null
+        const place = formatPlace({
+            city: d.city,
+            region: d.region || d.regionName || d.region_name,
+            country: d.country || d.country_name,
+            countryCode: d.country_code || d.countryCode
+        })
+        if (geoCache.size > 5000) geoCache.clear()
+        geoCache.set(ip, place)
+        return place
+    } catch (err) {
+        console.error('[geo] lookup failed', err.message)
+        return null
+    }
+}
+
 module.exports = {
     emailEnabled,
     sendEmail,
@@ -164,6 +229,8 @@ module.exports = {
     escapeHtml,
     addToMailerLite,
     suggestReply,
+    lookupLocation,
+    locationFromHeaders,
     aiEnabled: Boolean(anthropic),
     mailerliteEnabled: Boolean(MAILERLITE_API_KEY)
 }

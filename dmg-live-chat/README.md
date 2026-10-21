@@ -36,6 +36,8 @@ Your own live chat for **dorianmediagroup.com**. Visitors chat from a button on 
 -   A list of conversations with unread counts, and a green dot on visitors who are on your site now.
 -   The visitor's email, the page they're on, and their MailerLite status.
 -   Quick replies, an **AI suggested reply** button (✦), file sharing, Close / Block / Delete.
+-   **Live AI suggestions:** after each visitor message, two suggested replies appear above the reply box. Tap one to edit it, then send. (`AI_AUTO_SUGGEST=off` to turn off.)
+-   **Visitor location:** approximate city and state from their IP address, plus their local time, shown in the chat list and at the top of each chat.
 
 ## 1. Deploy the server on Sevalla
 

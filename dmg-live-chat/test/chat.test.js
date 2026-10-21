@@ -11,11 +11,18 @@ const BASE = `http://localhost:${PORT}`
 const PASSWORD = 'test-password'
 let proc
 let dataDir
+let geoServer
 
 const once = (socket, event) => new Promise((resolve) => socket.once(event, resolve))
 const emit = (socket, event, payload) => new Promise((resolve) => socket.emit(event, payload, resolve))
 
 before(async () => {
+    // Stand-in for the IP location service.
+    geoServer = require('http').createServer((req, res) => {
+        res.setHeader('Content-Type', 'application/json')
+        res.end(JSON.stringify({ success: true, city: 'Kansas City', region: 'Missouri', country: 'United States', country_code: 'US', ip: req.url.slice(1) }))
+    })
+    await new Promise((resolve) => geoServer.listen(0, resolve))
     dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'dmg-chat-'))
     proc = spawn(process.execPath, [path.join(__dirname, '..', 'server.js')], {
         env: {
@@ -25,7 +32,8 @@ before(async () => {
             DATA_DIR: dataDir,
             NTFY_TOPIC: '',
             SPAM_MIN_SECONDS: '0',
-            AUTO_REPLY_SECONDS: '1'
+            AUTO_REPLY_SECONDS: '1',
+            GEO_LOOKUP_URL: `http://localhost:${geoServer.address().port}/{ip}`
         },
         stdio: ['ignore', 'pipe', 'inherit']
     })
@@ -34,6 +42,7 @@ before(async () => {
 
 after(() => {
     proc.kill()
+    geoServer.close()
     fs.rmSync(dataDir, { recursive: true, force: true })
 })
 
@@ -177,6 +186,26 @@ test('visitors and admin can share files', async () => {
     assert.strictEqual(file.headers.get('content-type'), 'image/png')
     assert.strictEqual(Buffer.from(await file.arrayBuffer()).length, png.length)
     visitor.close()
+})
+
+test("shows the visitor's location and time zone", async () => {
+    const { body } = await login(PASSWORD)
+    const admin = io(`${BASE}/admin`, { auth: { token: body.token } })
+    await once(admin, 'connect')
+    const visitor = io(`${BASE}/visitor`, {
+        auth: { pageUrl: 'https://dorianmediagroup.com/', timeZone: 'America/Chicago' },
+        extraHeaders: { 'x-forwarded-for': '203.0.113.7' }
+    })
+    const session = await once(visitor, 'session')
+    const located = new Promise((resolve) =>
+        admin.on('conversation_updated', (c) => c && c.id === session.visitorId && c.location && resolve(c))
+    )
+    assert.ok((await emit(visitor, 'message', { body: 'Hello from KC' })).ok)
+    const c = await located
+    assert.strictEqual(c.location, 'Kansas City, Missouri')
+    assert.strictEqual(c.timezone, 'America/Chicago')
+    visitor.close()
+    admin.close()
 })
 
 test('spam: honeypot and blocked visitors are ignored', async () => {

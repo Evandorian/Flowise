@@ -17,6 +17,9 @@
         conversations: new Map(),
         currentId: null,
         typing: new Set(),
+        suggestions: new Map(), // conversationId -> AI reply options
+        suggesting: new Set(), // conversations with suggestions being written
+        autoSuggest: false,
         lastStamp: 0
     }
 
@@ -54,6 +57,16 @@
 
     function displayName(c) {
         return c.name || c.email || 'Visitor ' + c.id.slice(0, 4).toUpperCase()
+    }
+
+    // The visitor's own clock, e.g. "3:42 PM their time".
+    function localTime(timeZone) {
+        if (!timeZone) return ''
+        try {
+            return new Date().toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', timeZone }) + ' their time'
+        } catch (e) {
+            return ''
+        }
     }
 
     function shortUrl(u) {
@@ -167,6 +180,12 @@
                 li.querySelector('.li-name').append(pill)
             }
             li.querySelector('.li-time').textContent = relTime(c.last_message_at)
+            if (c.location) {
+                const loc = document.createElement('div')
+                loc.className = 'li-loc'
+                loc.textContent = c.location
+                li.querySelector('.li-top').after(loc)
+            }
             li.querySelector('.li-last').textContent = state.typing.has(c.id)
                 ? 'typing…'
                 : (c.last_sender === 'admin' ? 'You: ' : '') + (c.last_message || '')
@@ -270,6 +289,12 @@
         const info = $('t-info')
         info.innerHTML = ''
         const parts = []
+        if (c.location || c.timezone) {
+            const where = document.createElement('span')
+            where.className = 'where'
+            where.textContent = [c.location, localTime(c.timezone)].filter(Boolean).join(' · ')
+            parts.push(where)
+        }
         if (c.email) {
             const a = document.createElement('a')
             a.href = 'mailto:' + c.email
@@ -310,6 +335,9 @@
             $('messages').innerHTML = ''
             state.lastStamp = 0
             res.messages.forEach(addMessage)
+            if (res.suggestions && res.suggestions.length) state.suggestions.set(id, res.suggestions)
+            else state.suggestions.delete(id)
+            renderQuick()
             renderList()
             if (window.innerWidth > 760) $('reply').focus()
         })
@@ -442,6 +470,9 @@
         const body = reply.value.trim()
         if (!body || !state.currentId) return
         stopTyping()
+        state.suggestions.delete(state.currentId)
+        state.suggesting.delete(state.currentId)
+        renderQuick()
         state.socket.timeout(10000).emit('send', { conversationId: state.currentId, body }, (err, res) => {
             if (err || res.error) return alert('Message failed to send. Check your connection.')
         })
@@ -462,6 +493,30 @@
     function renderQuick() {
         const box = $('quick')
         box.innerHTML = ''
+        const ai = state.suggestions.get(state.currentId) || []
+        if (state.suggesting.has(state.currentId) && !ai.length) {
+            const b = document.createElement('button')
+            b.type = 'button'
+            b.className = 'ai pending'
+            b.disabled = true
+            b.textContent = '✦ Writing suggestions…'
+            box.append(b)
+        }
+        ai.forEach((text) => {
+            const b = document.createElement('button')
+            b.type = 'button'
+            b.className = 'ai'
+            b.title = text
+            b.textContent = '✦ ' + text
+            // Tap to put it in the reply box so you can edit before sending.
+            b.addEventListener('click', () => {
+                reply.value = text
+                reply.dispatchEvent(new Event('input'))
+                reply.focus()
+            })
+            box.append(b)
+        })
+        box.scrollLeft = 0
         quickReplies().forEach((text) => {
             const b = document.createElement('button')
             b.type = 'button'
@@ -603,6 +658,12 @@
                 addMessage(m)
                 if (m.sender === 'visitor') {
                     setVisitorTyping(m.conversation_id, false)
+                    if (state.autoSuggest) {
+                        state.suggestions.delete(m.conversation_id)
+                        state.suggesting.add(m.conversation_id)
+                        renderQuick()
+                        setTimeout(() => state.suggesting.delete(m.conversation_id) && renderQuick(), 30000)
+                    }
                     if (!document.hidden) socket.emit('read', m.conversation_id)
                 }
             }
@@ -610,6 +671,13 @@
         })
 
         socket.on('visitor_typing', ({ conversationId, typing }) => setVisitorTyping(conversationId, typing))
+
+        socket.on('suggestions', ({ conversationId, options }) => {
+            state.suggesting.delete(conversationId)
+            if (options.length) state.suggestions.set(conversationId, options)
+            else state.suggestions.delete(conversationId)
+            if (conversationId === state.currentId) renderQuick()
+        })
     }
 
     // Mark the open conversation read when you come back to the app.
@@ -628,6 +696,7 @@
         try {
             const cfg = await api('/api/admin/config')
             $('suggest').hidden = !cfg.ai
+            state.autoSuggest = Boolean(cfg.autoSuggest)
         } catch (e) {}
     }
 
@@ -643,6 +712,23 @@
             state.currentId = id
             $('app').classList.add('in-thread')
         }
+    }
+
+    // iPhone keyboard: iOS doesn't shrink the page when the keyboard opens, it slides
+    // the whole page up, pushing the header and messages off screen. Size the app to
+    // the visible area instead, so the messages sit right above the reply box.
+    const vv = window.visualViewport
+    if (vv) {
+        const fit = () => {
+            const box = $('messages')
+            const atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 60
+            document.documentElement.style.setProperty('--app-h', Math.round(vv.height) + 'px')
+            if (window.scrollY || vv.offsetTop) window.scrollTo(0, 0)
+            if (atBottom) box.scrollTop = box.scrollHeight
+        }
+        vv.addEventListener('resize', fit)
+        vv.addEventListener('scroll', fit)
+        fit()
     }
 
     if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch((e) => console.error(e))

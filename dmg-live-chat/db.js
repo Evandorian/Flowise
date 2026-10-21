@@ -69,6 +69,9 @@ addColumn('conversations', 'mailerlite_status', 'TEXT')
 addColumn('conversations', 'auto_replied_at', 'INTEGER')
 addColumn('conversations', 'last_emailed_message_id', 'INTEGER NOT NULL DEFAULT 0')
 addColumn('conversations', 'admin_alerted_at', 'INTEGER')
+addColumn('conversations', 'location', 'TEXT')
+addColumn('conversations', 'location_ip', 'TEXT')
+addColumn('conversations', 'timezone', 'TEXT')
 
 const stmts = {
     getSetting: db.prepare('SELECT value FROM settings WHERE key = ?'),
@@ -106,7 +109,10 @@ const stmts = {
         mailerlite_status: db.prepare('UPDATE conversations SET mailerlite_status = ? WHERE id = ?'),
         auto_replied_at: db.prepare('UPDATE conversations SET auto_replied_at = ? WHERE id = ?'),
         last_emailed_message_id: db.prepare('UPDATE conversations SET last_emailed_message_id = ? WHERE id = ?'),
-        admin_alerted_at: db.prepare('UPDATE conversations SET admin_alerted_at = ? WHERE id = ?')
+        admin_alerted_at: db.prepare('UPDATE conversations SET admin_alerted_at = ? WHERE id = ?'),
+        location: db.prepare('UPDATE conversations SET location = ? WHERE id = ?'),
+        location_ip: db.prepare('UPDATE conversations SET location_ip = ? WHERE id = ?'),
+        timezone: db.prepare('UPDATE conversations SET timezone = ? WHERE id = ?')
     },
     deleteConversation: db.prepare('DELETE FROM conversations WHERE id = ?'),
     deleteUploadsFor: db.prepare('DELETE FROM uploads WHERE conversation_id = ? RETURNING id'),
