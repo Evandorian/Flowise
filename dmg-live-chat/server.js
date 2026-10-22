@@ -55,6 +55,15 @@ const SECRET =
         return s
     })()
 
+// When this database was first created, to spot a data folder that resets on deploy.
+const DB_CREATED_AT =
+    Number(store.getSetting('created_at')) ||
+    (() => {
+        const now = Date.now()
+        store.setSetting('created_at', String(now))
+        return now
+    })()
+
 const sign = (value) => crypto.createHmac('sha256', SECRET).update(value).digest('base64url')
 
 function safeEqual(a, b) {
@@ -627,6 +636,18 @@ server.listen(PORT, () => {
     console.log(`  Embed:  <script src="${PUBLIC_URL}/widget.js" defer></script>`)
     console.log(
         `  Email: ${integrations.emailEnabled ? 'on' : 'off'} · MailerLite: ${integrations.mailerliteEnabled ? 'on' : 'off'} · AI: ${integrations.aiEnabled ? 'on' : 'off'}`
+    )
+    // If "created" changes on every deploy, the data folder isn't on a persistent disk:
+    // chats, your sign-in and phone notifications would all reset on each deploy.
+    let mounted = false
+    try {
+        mounted = fs
+            .readFileSync('/proc/mounts', 'utf8')
+            .split('\n')
+            .some((line) => line.split(' ')[1] === path.resolve(store.DATA_DIR))
+    } catch {}
+    console.log(
+        `  Data:   ${store.DATA_DIR} (${mounted ? 'persistent disk' : 'NOT a mounted disk'}, created ${new Date(DB_CREATED_AT).toISOString()}, ${store.listConversations('open').length + store.listConversations('closed').length} chats)`
     )
 })
 
