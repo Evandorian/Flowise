@@ -646,8 +646,18 @@ server.listen(PORT, () => {
             .split('\n')
             .some((line) => line.split(' ')[1] === path.resolve(store.DATA_DIR))
     } catch {}
+    try {
+        // Where each disk is mounted, to find the persistent one (e.g. "/data ext4").
+        const mounts = fs
+            .readFileSync('/proc/mounts', 'utf8')
+            .split('\n')
+            .map((line) => line.split(' '))
+            .filter(([dev, at, type]) => at && /^\/(data|mnt|var\/lib\/data|app)/.test(at))
+            .map(([dev, at, type]) => `${at} ${type} ${dev}`)
+        console.log(`  Mounts: ${mounts.join(' | ') || 'none'}`)
+    } catch {}
     console.log(
-        `  Data:   ${store.DATA_DIR} (${mounted ? 'persistent disk' : 'NOT a mounted disk'}, created ${new Date(DB_CREATED_AT).toISOString()}, ${store.listConversations('open').length + store.listConversations('closed').length} chats)`
+        `  Data:   ${store.DATA_DIR} (${mounted ? 'mounted' : 'NOT a mounted disk'}, created ${new Date(DB_CREATED_AT).toISOString()}, ${store.listConversations('open').length + store.listConversations('closed').length} chats)`
     )
 })
 
