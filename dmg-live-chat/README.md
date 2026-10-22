@@ -45,8 +45,8 @@ Sign in to [sevalla.com](https://sevalla.com) with your Kinsta login.
 
 1. **Add application**, connect GitHub, choose `Evandorian/Flowise` and this branch.
 2. Build settings: **Build path `dmg-live-chat`**, build with the **Dockerfile**.
-3. **Disks / Persistent storage:** add a 10 GB volume mounted at **`/data`**.
-4. **Environment variables:** copy them from [`.env.example`](.env.example). The minimum to start is `ADMIN_PASSWORD`, `PUBLIC_URL`, `ALLOWED_ORIGINS`, `VAPID_SUBJECT` and `DATA_DIR=/data`. Add the email, MailerLite and Anthropic keys to turn those features on.
+3. **Disks / Persistent storage:** add a 10 GB volume mounted at **`/var/lib/data`** (the default), and set `DATA_DIR` to the same path. If they differ, the database lives inside the container and resets on every deploy (the startup log line `Data:` says `NOT a mounted disk`).
+4. **Environment variables:** copy them from [`.env.example`](.env.example). The minimum to start is `ADMIN_PASSWORD`, `PUBLIC_URL`, `ALLOWED_ORIGINS`, `VAPID_SUBJECT` and `DATA_DIR=/var/lib/data`. Add the email, MailerLite and Anthropic keys to turn those features on.
 5. **Domains:** add `chat.dorianmediagroup.com`, then create the CNAME record Sevalla shows you (in MyKinsta DNS if your DNS is there).
 
 > Hosts that put apps to sleep when idle won't work: a sleeping server can't receive chats.
@@ -134,4 +134,4 @@ ADMIN_PASSWORD=test npm start
 -   `ALLOWED_ORIGINS` stops other sites from embedding your chat.
 -   Only images and PDFs can be shared (10 MB max). They're served from unguessable links with strict security headers.
 -   Blocking a visitor blocks their browser and IP address. Use it for spam only: people sharing an office network share an IP.
--   Back up `/data` (the database and shared files) if you want to keep chat history long-term.
+-   Back up the data disk (the database and shared files) if you want to keep chat history long-term.
