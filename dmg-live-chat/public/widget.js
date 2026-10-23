@@ -166,8 +166,11 @@
         '.av .dot{position:absolute;right:0;bottom:0;width:28%;height:28%;min-width:10px;min-height:10px;border-radius:50%;background:var(--ok);border:2px solid #fff}' +
         // launcher
         '.launcher{position:fixed;bottom:20px;' + side + ':20px;width:62px;height:62px;padding:0;border-radius:50%;border:3px solid #fff;background:#fff;' +
-        'box-shadow:0 10px 30px rgba(0,0,0,.35);transition:transform .2s cubic-bezier(.22,1,.36,1)}' +
-        '.launcher:hover{transform:scale(1.05)}' +
+        // A tight shadow on its own layer: iPhone Safari draws a wide blurred shadow on a fixed
+        // element as a visible rectangle where it crosses page sections.
+        'box-shadow:0 4px 14px rgba(0,0,0,.22),0 1px 3px rgba(0,0,0,.18);transform:translateZ(0);' +
+        '-webkit-backface-visibility:hidden;backface-visibility:hidden;transition:transform .2s cubic-bezier(.22,1,.36,1)}' +
+        '.launcher:hover{transform:translateZ(0) scale(1.05)}' +
         '.launcher .av{width:100%;height:100%}' +
         '.launcher .av .dot{border:3px solid #fff;right:-2px;bottom:0}' +
         '.launcher .x{display:none;width:100%;height:100%;align-items:center;justify-content:center;color:var(--ink)}' +
