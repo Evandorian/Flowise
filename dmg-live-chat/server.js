@@ -377,7 +377,7 @@ function scheduleAdminAlert(id) {
     if (!ADMIN_EMAIL) return
     schedule(`alert:${id}`, ADMIN_ALERT_DELAY, async () => {
         const c = store.getConversation(id)
-        if (!c || c.admin_unread === 0) return
+        if (!c || c.admin_unread === 0) return console.log('[email] alert skipped: chat already read')
         if (c.admin_alerted_at && Date.now() - c.admin_alerted_at < 30 * 60 * 1000) return
         const unread = store.getMessages(id).filter((m) => m.sender === 'visitor').slice(-c.admin_unread)
         const who = c.name || c.email || 'A website visitor'

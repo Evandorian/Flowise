@@ -36,6 +36,7 @@ async function sendEmail({ to, subject, text, html, replyTo }) {
                 signal: AbortSignal.timeout(15000)
             })
             if (!res.ok) throw new Error(`Resend ${res.status}: ${(await res.text()).slice(0, 300)}`)
+            console.log(`[email] sent via Resend: "${subject}"`)
             return true
         }
         await transport.sendMail({ from: MAIL_FROM, to, subject, text, html, replyTo })
