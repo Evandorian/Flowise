@@ -84,6 +84,7 @@ Everything has a sensible default. Each of these can be changed with an attribut
 | `data-hide-on-teaser` | selectors for the Google reviews badge (only floating elements) |
 | `data-hide-on`        | `single-post,blog,archive,category,tag,author,date,search` (no chat on blog posts, the blog page or blog archives) |
 | `data-hide-paths`     | booking, thank-you, legal, careers and questionnaire pages (no chat there) |
+| `data-hide-when`      | `.awb-off-canvas-wrap.awb-show` (chat and reviews badge hide while the mobile menu is open) |
 | `data-color`          | `#28b0ff`                                                       |
 
 ## 4. Conversion tracking (Google Tag Manager)

@@ -16,6 +16,7 @@
  *   data-hide-on-teaser="CSS selector"    on phones, hidden while the teaser shows (your reviews badge)
  *   data-hide-on="single-post,blog,..."  WordPress body classes where the chat doesn't appear at all
  *   data-hide-paths="/book-a-discovery-call,..."  pages where the chat doesn't appear at all
+ *   data-hide-when=".awb-off-canvas-wrap.awb-show"  while this is on the page (an open menu), the chat hides
  *   data-color="#28b0ff"
  *   data-position="right" | "left"
  */
@@ -78,6 +79,8 @@
                 return p.trim().replace(/\/$/, '')
             })
             .filter(Boolean),
+        // Avada's off-canvas menus get "awb-show" while open.
+        hideWhen: attr('hide-when', '.awb-off-canvas-wrap.awb-show'),
         hideOn: attr('hide-on', 'single-post,blog,archive,category,tag,author,date,search')
             .split(',')
             .map(function (c) {
@@ -464,6 +467,47 @@
         })
         hiddenForTeaser = []
     }
+    // ------------------------------------------------------------ open site menu
+
+    // While the site's mobile menu is open, the chat button, teaser and reviews badge
+    // step aside so nothing floats over the menu.
+    var menuStyle = null
+    function watchMenu() {
+        if (!cfg.hideWhen || !window.MutationObserver) return
+        var panels
+        try {
+            panels = document.querySelectorAll('.awb-off-canvas-wrap')
+        } catch (e) {
+            return
+        }
+        function check() {
+            var open = false
+            try {
+                open = !!document.querySelector(cfg.hideWhen)
+            } catch (e) {}
+            host.style.visibility = open ? 'hidden' : ''
+            if (open && !menuStyle && cfg.hideOnTeaser) {
+                menuStyle = document.createElement('style')
+                menuStyle.textContent =
+                    cfg.hideOnTeaser
+                        .split(',')
+                        .map(function (sel) {
+                            return sel.trim() + ':not(.awb-off-canvas-wrap *)'
+                        })
+                        .join(',') + '{visibility:hidden!important}'
+                document.head.appendChild(menuStyle)
+            } else if (!open && menuStyle) {
+                menuStyle.remove()
+                menuStyle = null
+            }
+        }
+        var mo = new MutationObserver(check)
+        panels.forEach(function (el) {
+            mo.observe(el, { attributes: true, attributeFilter: ['class'] })
+        })
+        check()
+    }
+
     function showTeaser() {
         if (isOpen() || getStore(TEASED_KEY, sessionStorage)) return
         setStore(TEASED_KEY, true, sessionStorage)
@@ -887,6 +931,7 @@
             })
         if (hidden && !/dmgchat=/.test(location.hash)) return
         document.body.appendChild(host)
+        watchMenu()
 
         // Link from a follow-up email: "#dmgchat=<id>.<token>" restores the conversation.
         var m = location.hash.match(/dmgchat=([0-9a-f-]{36})\.([\w-]+)/)
